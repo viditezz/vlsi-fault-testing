@@ -1,0 +1,13 @@
+https://dl.acm.org/doi/10.1145/62882.62939 - Jain & Agrawal, "STAFAN: An Alternative to Fault Simulation" (22nd DAC, 1985)
+Introduces statistical fault analysis — estimates controllability/observability probabilities from a single fault-free simulation pass to predict stuck-at fault coverage without running full fault simulation, within ~5% of true coverage.
+
+https://ieeexplore.ieee.org/document/364535 - Majumdar & Vrudhula, "Fault Coverage and Test Length Estimation for Random Pattern Testing" (IEEE Trans. Computers, 1995)
+Develops a statistical model for how fault coverage grows with random pattern count, letting you predict when a random test set will saturate on a given circuit — directly relevant to your plateau-detection metric.
+
+https://link.springer.com/article/10.1023/A:1023796929359 - Hailong Cui & Sharad C. Seth, Shashank K. Mehta, "Modeling Fault Coverage of Random Test Patterns" (JOURNAL OF ELECTRONIC TESTING: Theory and Applications 19, 271–284, 2003) Proposes a coverage-correlated metric computable from a single simulation pass, used to estimate the point at which fault coverage saturates for ISCAS-85/89 circuits — closely mirrors your plateau-trigger problem, worth reading in full before citing.
+
+https://ieeexplore.ieee.org/document/9031951 - Maiti & Khatua, "Fault Coverage Enhancement via Weighted Random Pattern Generation in BIST Using a DNN-Driven-PSO Approach" (IEEE Xplore, 2019)Uses a particle swarm optimizer guided by a DNN fault-coverage predictor to search for input-weight vectors that boost coverage-per-pattern on ISCAS-85/89 circuits — a recent, ML-flavored take on the same "guide random generation toward hard faults" idea you're pursuing.
+
+https://ieeexplore.ieee.org/document/4641167 - Wu & Wang "On Optimizing Fault Coverage, Pattern Count, and ATPG Run Time Using a Hybrid Single-Capture Scheme for Testing Scan Designs" (IEEE Xplore, 2008)  Proposes a hybrid test-generation scheme that explores the trade-off space between pattern count and ATPG runtime while optimizing fault coverage on scan-based designs — same three-way trade-off your paper targets, though via a different hybrid mechanism (single-capture scan scheme) rather than adaptive random/deterministic switching.
+
+
