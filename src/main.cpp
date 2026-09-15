@@ -55,6 +55,10 @@ struct Circuit {
     vector<int> levelized_order;
 };
 
+struct Fault {
+    int signal_index;   // index into circuit.signals
+    bool stuck_value;   // false = SA0, true = SA1
+};
 
 // ============================================================
 // HELPER FUNCTIONS
@@ -642,6 +646,107 @@ vector<bool> simulate(
     return outputs;
 }
 
+// ============================================================
+// 4. FAULT INJECTION & DETECTION
+// ============================================================
+
+vector<Fault> generate_sa0_fault_list(const Circuit& circuit)
+{
+    vector<Fault> faults;
+
+    for (int i = 0; i < static_cast<int>(circuit.signals.size()); ++i) {
+        Fault f;
+        f.signal_index = i;
+        f.stuck_value = false;   // SA0
+        faults.push_back(f);
+    }
+
+    return faults;
+}
+
+
+vector<bool> simulate_with_fault(
+    const Circuit& circuit,
+    const vector<bool>& input_vector,
+    int faulty_signal,      // -1 = no fault
+    bool stuck_value)
+{
+    if (input_vector.size() != circuit.primary_inputs.size()) {
+        throw runtime_error(
+            "Input vector size does not match number of primary inputs."
+        );
+    }
+
+    vector<bool> values(circuit.signals.size(), false);
+
+    for (size_t i = 0; i < circuit.primary_inputs.size(); ++i) {
+        values[circuit.primary_inputs[i]] = input_vector[i];
+    }
+
+    // If the fault sits on a primary input line, force it immediately.
+    if (faulty_signal != -1 &&
+        find(circuit.primary_inputs.begin(), circuit.primary_inputs.end(), faulty_signal)
+            != circuit.primary_inputs.end()) {
+        values[faulty_signal] = stuck_value;
+    }
+
+    for (int gate_index : circuit.levelized_order) {
+        const Signal& gate = circuit.signals[gate_index];
+
+        values[gate_index] = evaluate_gate(gate.type, gate.fanins, values);
+
+        // Force the faulty line's value after evaluation so its
+        // own fanouts see the stuck value, not the computed one.
+        if (gate_index == faulty_signal) {
+            values[gate_index] = stuck_value;
+        }
+    }
+
+    vector<bool> outputs;
+    for (int output_index : circuit.primary_outputs) {
+        outputs.push_back(values[output_index]);
+    }
+
+    return outputs;
+}
+
+
+bool is_fault_detected(
+    const Circuit& circuit,
+    const Fault& fault,
+    const vector<bool>& input_vector,
+    const vector<bool>& good_output)
+{
+    vector<bool> faulty_output =
+        simulate_with_fault(circuit, input_vector, fault.signal_index, fault.stuck_value);
+
+    return faulty_output != good_output;
+}
+
+
+double compute_fault_coverage(
+    const Circuit& circuit,
+    const vector<Fault>& fault_list,
+    const vector<vector<bool>>& test_patterns)
+{
+    vector<vector<bool>> good_outputs;
+    for (const auto& pattern : test_patterns) {
+        good_outputs.push_back(simulate(circuit, pattern));
+    }
+
+    int detected = 0;
+
+    for (const Fault& fault : fault_list) {
+        for (size_t p = 0; p < test_patterns.size(); ++p) {
+            if (is_fault_detected(circuit, fault, test_patterns[p], good_outputs[p])) {
+                ++detected;
+                break;
+            }
+        }
+    }
+
+    return static_cast<double>(detected) / fault_list.size();
+}
 
 // ============================================================
 // DEBUG / PRINT FUNCTIONS
@@ -851,6 +956,15 @@ int main(int argc, char* argv[])
 
 
         cout << '\n';
+        // TEMPORARY: manual SA0 sanity check — remove once validated
+        vector<Fault> sa0_faults = generate_sa0_fault_list(circuit);
+
+        cout << "\nSA0 fault list size: " << sa0_faults.size() << '\n';
+
+        bool detected = is_fault_detected(circuit, sa0_faults[0], input_vector, outputs);
+        cout << "Fault on signal " << circuit.signals[sa0_faults[0].signal_index].name
+             << " SA0 detected by all-0 vector: " << detected << '\n';
+
     }
     catch (const exception& e) {
 
