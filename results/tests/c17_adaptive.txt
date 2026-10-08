@@ -1,0 +1,8 @@
+# c17 adaptive seed 1: 6 compacted tests, FC 100%
+# inputs: 1 2 3 6 7
+01010
+00111
+00010
+11100
+10011
+11110
