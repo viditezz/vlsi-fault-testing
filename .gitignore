@@ -1,5 +1,4 @@
 build/
 faultatpg
-src/main
 *.o
 __pycache__/

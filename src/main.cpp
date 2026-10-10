@@ -8,9 +8,13 @@
 //   faultatpg selftest  <bench_dir>
 //   faultatpg calibrate <bench>                 ns per work unit (fault sim vs PODEM)
 //
-// Options: --method random|podem|fixed|adaptive  --seed N  --budget N  --switch N
-//          --bt N  --alpha A  --confirm N  --probe N  --warmup N  --weight W
-//          --curve FILE  --tests FILE  --seeds N  --circuits c17,c432,...
+// Options: --method random|podem|fixed|plateau|stage1|adaptive  --seed N  --budget N
+//          --switch N  --bt N  --alpha A  --confirm N  --probe N  --warmup N  --window MU
+//          --weight W  --plateau-blocks W  --plateau-max K
+//          --curve FILE  --tests FILE
+// Sweep:   --seeds N  --circuits c17,c432,...  --methods random,podem,fixed,plateau,stage1,adaptive
+//          --quiet 1 (summary.csv only)
+//          --grid fine|coarse   (fixed switch points: 19 from 64 to 32768, or 128/1024/8192)
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -76,9 +80,13 @@ RunConfig config_from(const std::map<std::string, std::string>& o)
         else if (k == "bt") cfg.backtrack_limit = std::stoi(v);
         else if (k == "alpha") cfg.alpha = std::stod(v);
         else if (k == "confirm") cfg.confirm = std::stoi(v);
+        else if (k == "window") cfg.window_mu = std::stod(v);
+        else if (k == "stage2") cfg.stage2 = v != "0";
         else if (k == "probe") cfg.probe_size = std::stoi(v);
         else if (k == "warmup") cfg.warmup = std::stoll(v);
         else if (k == "weight") cfg.podem_weight = std::stod(v);
+        else if (k == "plateau-blocks") cfg.plateau_blocks = std::stoi(v);
+        else if (k == "plateau-max") cfg.plateau_max = std::stoi(v);
     }
     return cfg;
 }
@@ -175,7 +183,7 @@ void print_result(const RunResult& r)
                 r.podem_vectors, r.probe_calls);
     std::printf("         tests %d -> %d compacted   work %.3g   time %.2f ms (random %.2f, podem %.2f)\n",
                 r.tests, r.compacted, r.work_total, r.ms_total, r.ms_random, r.ms_podem);
-    if (r.method == "adaptive")
+    if (r.method == "adaptive" || r.method == "plateau" || r.method == "stage1")
         std::printf("         switched after %lld random patterns\n",
                     static_cast<long long>(r.switch_at));
 }
@@ -212,12 +220,32 @@ int cmd_sweep(const std::string& dir, const std::string& out,
     RunConfig base = config_from(o);
 
     struct M { std::string method; int64_t sw; };
-    std::vector<M> methods = {{"random", 0},     {"podem", 0},      {"fixed", 128},
-                              {"fixed", 1024},   {"fixed", 8192},   {"adaptive", 0}};
+    std::vector<int64_t> grid = {128, 1024, 8192};
+    if (!o.count("grid") || o.at("grid") == "fine") {
+        grid.clear();  // 64 * {1, 1.5, 2, 3, 4, 6, ...} up to 32768
+        for (int64_t n = 64; n <= 32768; n *= 2) {
+            grid.push_back(n);
+            if (n * 3 / 2 <= 32768 && n < 32768) grid.push_back(n * 3 / 2);
+        }
+    }
+    std::string want = o.count("methods") ? o.at("methods") : "random,podem,fixed,plateau,stage1,adaptive";
+    auto wanted = [&](const std::string& m) { return ("," + want + ",").find("," + m + ",") != std::string::npos; };
+    std::vector<M> methods;
+    if (wanted("random")) methods.push_back({"random", 0});
+    if (wanted("podem")) methods.push_back({"podem", 0});
+    if (wanted("fixed"))
+        for (int64_t n : grid) methods.push_back({"fixed", n});
+    if (wanted("plateau")) methods.push_back({"plateau", 0});
+    if (wanted("stage1")) methods.push_back({"stage1", 0});
+    if (wanted("adaptive")) methods.push_back({"adaptive", 0});
+    bool quiet = o.count("quiet") > 0;
 
-    fs::create_directories(out + "/curves");
-    fs::create_directories(out + "/decisions");
-    fs::create_directories(out + "/tests");
+    fs::create_directories(out);
+    if (!quiet) {
+        fs::create_directories(out + "/curves");
+        fs::create_directories(out + "/decisions");
+        fs::create_directories(out + "/tests");
+    }
     std::ofstream sum(out + "/summary.csv");
     sum << summary_header() << "\n";
     std::ofstream info(out + "/circuits.csv");
@@ -242,7 +270,8 @@ int cmd_sweep(const std::string& dir, const std::string& out,
                 sum << summary_row(r) << "\n";
                 sum.flush();
                 std::string label = m.method + (m.method == "fixed" ? "-" + std::to_string(m.sw) : "");
-                if (s == 1) {
+                bool headline = m.method != "fixed" || m.sw == 128 || m.sw == 1024 || m.sw == 8192;
+                if (s == 1 && headline && !quiet) {
                     write_curve(out + "/curves/" + name + "_" + label + ".csv", r);
                     if (m.method == "adaptive") {
                         std::ofstream d(out + "/decisions/" + name + ".txt");
@@ -250,10 +279,11 @@ int cmd_sweep(const std::string& dir, const std::string& out,
                         write_tests(out + "/tests/" + name + "_adaptive.txt", c, r);
                     }
                 }
+                if (quiet) continue;
                 std::printf("%-6s %-12s s%d  FC %7.3f%%  FE %7.3f%%  tests %5d  work %10.3g  %9.1f ms%s\n",
                             name.c_str(), label.c_str(), s, r.fc(), r.fe(), r.compacted,
                             r.work_total, r.ms_total,
-                            m.method == "adaptive"
+                            m.method == "adaptive" || m.method == "plateau" || m.method == "stage1"
                                 ? ("  switch@" + std::to_string(r.switch_at)).c_str()
                                 : "");
                 std::fflush(stdout);

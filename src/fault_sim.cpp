@@ -3,7 +3,25 @@
 
 #include <stdexcept>
 
+#if defined(_MSC_VER)
+#include <intrin.h>
+#endif
+
 #include "logic.hpp"
+
+namespace {
+// Index of the lowest set bit of a nonzero word (portable count-trailing-zeros).
+inline int lowest_bit(uint64_t m)
+{
+#if defined(_MSC_VER)
+    unsigned long i;
+    _BitScanForward64(&i, m);
+    return static_cast<int>(i);
+#else
+    return __builtin_ctzll(m);
+#endif
+}
+}  // namespace
 
 FaultSim::FaultSim(const Circuit& c, const std::vector<Fault>& faults)
     : c_(c), faults_(faults)
@@ -122,7 +140,7 @@ int FaultSim::simulate_block(const std::vector<uint64_t>& pi_words, int n,
     for (int fi : targets) {
         uint64_t m = propagate(faults_[fi]);
         if (!m) continue;
-        int first = __builtin_ctzll(m);
+        int first = lowest_bit(m);
         state_[fi] = DETECTED;
         drop(fi);
         ++detected_;

@@ -34,6 +34,7 @@ public:
         R_.seed = cfg.seed;
         R_.faults = static_cast<int>(fl.faults.size());
         abandoned_.assign(fl.faults.size(), 0);
+        abort_work_.assign(fl.faults.size(), 0.0);
         t0_ = Clock::now();
         R_.curve.push_back({0, 0, 0, 0, 'R'});
     }
@@ -96,10 +97,12 @@ public:
         } else if (res.status == PodemStatus::REDUNDANT) {
             fs_.retire(f);  // proven undetectable: no vector can ever detect it
             ++R_.redundant;
+            R_.work_unresolved += cost() - w0;
         } else {
             // Aborted: stop targeting it, but keep it in fault simulation so a
             // later vector can still detect it by accident.
             abandoned_[f] = 1;
+            abort_work_[f] += cost() - w0;  // unresolved only if it stays undetected
         }
         R_.work_podem += cost() - w0;
         if (spent) *spent = cost() - w0;
@@ -136,7 +139,13 @@ public:
     //
     // The probe's vectors are real tests and stay in the test set; its redundant
     // and aborted verdicts are final. None of the probe is wasted work.
-    double probe()
+    struct Probe {
+        double yield = 0;   // faults detected per unit of work (detecting calls only)
+        int calls = 0;
+        int tests = 0;      // calls that produced a test
+    };
+
+    Probe probe()
     {
         auto t = Clock::now();
         std::vector<int> pool;
@@ -145,7 +154,7 @@ public:
         std::sort(pool.begin(), pool.end());
         std::shuffle(pool.begin(), pool.end(), rng_);
         double det_work = 0, all_work = 0;
-        int det = 0, calls = 0;
+        int det = 0, calls = 0, tests = 0;
         for (int f : pool) {
             // Up to probe_size calls; extend to 3x if no call has produced a test yet.
             if (calls >= cfg_.probe_size && (det > 0 || calls >= 3 * cfg_.probe_size)) break;
@@ -156,94 +165,140 @@ public:
             ++calls;
             all_work += w;
             if (st == PodemStatus::DETECTED) {
+                ++tests;
                 det += fs_.num_detected() - d0;  // the target plus anything it dropped
                 det_work += w;
             }
         }
         R_.ms_podem += ms_since(t);
-        hist_det_ += det;
-        hist_det_work_ += det_work;
-        if (det > 0) return det / std::max(det_work, 1.0);
-        // No test in the whole sample: the residue looks undetectable. Assume
-        // half a detection at the cost a detection took in earlier probes (or,
-        // with no history, at this probe's average call cost). Random still gets
-        // to prove itself in the window test — it only has to beat this bar.
-        double unit = hist_det_ > 0 ? hist_det_work_ / hist_det_
-                                    : all_work / std::max(calls, 1);
-        return 0.5 / std::max(unit, 1.0);
+        (void)all_work;
+        Probe p;
+        p.calls = calls;
+        p.tests = tests;
+        p.yield = det > 0 ? det / std::max(det_work, 1.0) : 0.0;
+        return p;
     }
 
-    // Adaptive switch, two stages, both using the same Poisson window test:
+    // Plateau baseline: switch once the last `plateau_blocks` random blocks
+    // together found at most `plateau_max` new faults. No statistics, no PODEM
+    // measurement — a fixed rule of thumb, used to check what the adaptive
+    // rule's statistics and measurements actually add.
+    void run_plateau()
+    {
+        auto t = Clock::now();
+        std::vector<int> hist;
+        while (targetable() > 0 && R_.random_applied < cfg_.random_budget) {
+            hist.push_back(random_block(64));
+            if (R_.random_applied < cfg_.warmup) continue;
+            const int w = cfg_.plateau_blocks;
+            if (static_cast<int>(hist.size()) < w) continue;
+            int sum = 0;
+            for (int i = 0; i < w; ++i) sum += hist[hist.size() - 1 - i];
+            if (sum <= cfg_.plateau_max) break;
+        }
+        R_.ms_random += ms_since(t);
+        R_.switch_at = R_.random_applied;
+        podem_phase();
+    }
+
+    // Adaptive switch.
     //
-    //  Stage 1 (no PODEM calls at all): a deterministic vector can never cost less
-    //  than fault-simulating it, and one fault-simulation pass costs about as much
-    //  as a whole 64-pattern random block. So PODEM's yield is at most ~1 detection
-    //  per block's worth of work, and random cannot be losing while it still finds
-    //  >= 1 new fault per block. Test random's rate against that bound.
+    // Both engines remove faults from the target list. Random does it at a rate
+    // lambda (faults per unit of work, observed block by block); PODEM does it at
+    // a yield y (faults per unit of work on calls that produce a test, measured by
+    // a probe). Each fault random finds saves the PODEM call that would have found
+    // it, so random is worth continuing while lambda > y.
     //
-    //  Stage 2 (after stage 1 rejects): measure PODEM's actual yield with a probe,
-    //  then test random's rate against it. Re-probe whenever the target set halves,
-    //  since the residue (and so PODEM's cost per fault) changes as it shrinks.
+    // Every decision uses the same window test: a window grows block by block
+    // until the break-even expectation mu = y * R reaches window_mu, then
+    // H0: lambda >= y is rejected when P(K <= k | Poisson(mu)) < alpha.
     //
-    //  Switch when the stage-2 test rejects `confirm` times in a row.
+    //  Stage 1 (PODEM not measured yet). Measuring PODEM is not free: a probe
+    //  early on spends PODEM work on easy faults random would find for less. So
+    //  stage 1 tests random against a cheap upper bound on PODEM's yield instead.
+    //  A deterministic vector has to be fault-simulated, and simulating one vector
+    //  costs about as much as a 64-pattern block (bit-parallel), so PODEM rarely
+    //  removes more than about one fault per block's worth of work. While random
+    //  finds clearly more than that, PODEM is not worth measuring.
+    //
+    //  Stage 2 (after stage 1 rejects). Probe PODEM on a random sample of the
+    //  targetable faults to measure y, then test random against it; switch after
+    //  `confirm` consecutive rejections. Re-probe when the targetable set halves.
+    //
+    // Two shortcuts, from the same cost argument:
+    //  - A probe that produces no test at all (up to 3x probe_size calls) means
+    //    the residue is (almost) all undetectable. Random cannot find what is not
+    //    there, so switch now; what PODEM does next is redundancy proofs, which
+    //    every flow pays for.
+    //  - With T targetable faults left, the most random can ever save is T/y,
+    //    while one test window costs window_mu/y. If T < window_mu, a window
+    //    cannot pay for itself, so switch.
     void run_adaptive()
     {
-        StagnationDetector det(cfg_.alpha, cfg_.confirm);
-        double yield = -1;      // < 0: stage 1
-        int pending_at_probe = 0;
-        double recent_block_work = 0;
+        StagnationDetector det(cfg_.alpha, cfg_.confirm, cfg_.window_mu);
+        double yield = -1;  // < 0: stage 1
+        int targetable_at_probe = 0;
         auto t = Clock::now();
+        auto log = [&](const std::string& s) {
+            R_.decisions.push_back("pattern " + std::to_string(R_.random_applied) + ": " + s);
+        };
         while (targetable() > 0 && R_.random_applied < cfg_.random_budget) {
-            int found = random_block(64);
-            det.add_block(found, last_block_work_);
-            recent_block_work = last_block_work_;
+            det.add_block(random_block(64), last_block_work_);
             if (R_.random_applied < cfg_.warmup || targetable() == 0) continue;
 
-            bool need_probe = yield >= 0 && targetable() * 2 <= pending_at_probe;
+            bool need_probe = yield >= 0 && targetable() * 2 <= targetable_at_probe;
             if (yield < 0) {
-                // Stage 1: bound = one detection per block of work.
                 StagnationDecision d;
-                double bound = 1.0 / std::max(recent_block_work, 1.0);
-                det.test(bound, &d);
+                det.test(1.0 / std::max(last_block_work_, 1.0), &d);
                 if (d.enough_evidence) {
                     std::ostringstream o;
-                    o << "pattern " << R_.random_applied << ": stage 1  k=" << d.k << " over "
-                      << d.blocks << " blocks (bound: 1 per block), p=" << d.p
+                    o << "stage 1  k=" << d.k << " over " << d.blocks
+                      << " blocks (bound: 1 per block), p=" << d.p
                       << (d.reject ? "  REJECT -> probe PODEM" : "");
-                    R_.decisions.push_back(o.str());
+                    log(o.str());
                 }
                 if (!(d.enough_evidence && d.reject)) continue;
+                if (!cfg_.stage2) {
+                    log("stage 2 disabled -> SWITCH");
+                    break;
+                }
                 need_probe = true;
             }
             if (need_probe) {
                 R_.ms_random += ms_since(t);
-                yield = probe();
+                Probe p = probe();
                 t = Clock::now();
-                pending_at_probe = targetable();
+                yield = p.yield;
+                targetable_at_probe = targetable();
                 det.restart();
                 std::ostringstream o;
-                o << "pattern " << R_.random_applied << ": probe -> PODEM yield " << yield
-                  << " det/work, targetable " << pending_at_probe;
-                R_.decisions.push_back(o.str());
-                if (targetable() == 0) break;  // nothing left for PODEM to try
+                o << "probe " << p.calls << " PODEM calls, " << p.tests
+                  << " tests -> yield " << yield << " det/work, targetable " << targetable();
+                if (p.tests == 0) o << "  NO TESTS -> SWITCH";
+                log(o.str());
+                if (p.tests == 0 || targetable() == 0) break;
                 continue;
+            }
+            if (targetable() < cfg_.window_mu) {
+                std::ostringstream o;
+                o << "targetable " << targetable() << " < " << cfg_.window_mu
+                  << ": a test window costs more than PODEM on all of them -> SWITCH";
+                log(o.str());
+                break;
             }
             StagnationDecision d;
             bool fire = det.test(yield, &d);
             if (d.enough_evidence) {
                 std::ostringstream o;
-                o << "pattern " << R_.random_applied << ": stage 2  k=" << d.k << " over "
-                  << d.blocks << " blocks, break-even mu=" << d.mu << ", p=" << d.p
-                  << (d.reject ? "  REJECT" : "") << (fire ? "  -> SWITCH" : "");
-                R_.decisions.push_back(o.str());
+                o << "stage 2  k=" << d.k << " over " << d.blocks << " blocks, break-even mu="
+                  << d.mu << ", p=" << d.p << (d.reject ? "  REJECT" : "")
+                  << (fire ? "  -> SWITCH" : "");
+                log(o.str());
             }
-            if (fire) {
-                R_.switch_at = R_.random_applied;
-                break;
-            }
+            if (fire) break;
         }
         R_.ms_random += ms_since(t);
-        if (R_.switch_at < 0) R_.switch_at = R_.random_applied;
+        R_.switch_at = R_.random_applied;
         podem_phase();
     }
 
@@ -281,7 +336,10 @@ public:
         R_.detected = fs_.num_detected();
         R_.aborted = 0;
         for (int f : fs_.pending())
-            if (abandoned_[f]) ++R_.aborted;
+            if (abandoned_[f]) {
+                ++R_.aborted;
+                R_.work_unresolved += abort_work_[f];
+            }
         R_.tests = static_cast<int>(tests_.size());
         R_.work_total = work_total();
         compact();
@@ -312,16 +370,17 @@ private:
     Clock::time_point t0_;
     std::vector<std::vector<uint8_t>> tests_;
     std::vector<uint8_t> abandoned_;  // PODEM aborted: no longer targeted
-    int hist_det_ = 0;                // all probes: faults detected by PODEM tests
-    double hist_det_work_ = 0;        // all probes: work of PODEM calls that made a test
+    std::vector<double> abort_work_;  // PODEM work spent aborting each fault
     int64_t patterns_ = 0;
     double last_block_work_ = 0;
 };
 
 }  // namespace
 
-RunResult run_atpg(const Circuit& c, const FaultList& fl, const Scoap& sc, const RunConfig& cfg)
+RunResult run_atpg(const Circuit& c, const FaultList& fl, const Scoap& sc, const RunConfig& cfg_in)
 {
+    RunConfig cfg = cfg_in;
+    if (cfg.method == "stage1") cfg.stage2 = false;  // adaptive, switching on the cost-bound test
     Session s(c, fl, sc, cfg);
     if (cfg.method == "random") {
         s.run_random(cfg.random_budget);
@@ -334,7 +393,10 @@ RunResult run_atpg(const Circuit& c, const FaultList& fl, const Scoap& sc, const
         s.result().switch_at = s.result().random_applied;
         s.result().param = cfg.fixed_switch;
         s.podem_phase();
-    } else if (cfg.method == "adaptive") {
+    } else if (cfg.method == "plateau") {
+        s.run_plateau();
+        s.result().param = s.result().switch_at;
+    } else if (cfg.method == "adaptive" || cfg.method == "stage1") {
         s.run_adaptive();
         s.result().param = s.result().switch_at;
     } else {
@@ -347,7 +409,8 @@ std::string summary_header()
 {
     return "circuit,method,param,seed,faults,detected,redundant,aborted,fc_pct,fe_pct,"
            "random_applied,random_kept,podem_vectors,podem_calls,probe_calls,tests,compacted,"
-           "switch_at,work_random,work_podem,work_total,ms_random,ms_podem,ms_total,ms_compact";
+           "switch_at,work_random,work_podem,work_total,ms_random,ms_podem,ms_total,ms_compact,"
+           "work_unresolved,work_core";
 }
 
 std::string summary_row(const RunResult& r)
@@ -365,7 +428,9 @@ std::string summary_row(const RunResult& r)
     o.precision(0);
     o << r.work_random << ',' << r.work_podem << ',' << r.work_total << ',';
     o.precision(3);
-    o << r.ms_random << ',' << r.ms_podem << ',' << r.ms_total << ',' << r.ms_compact;
+    o << r.ms_random << ',' << r.ms_podem << ',' << r.ms_total << ',' << r.ms_compact << ',';
+    o.precision(0);
+    o << r.work_unresolved << ',' << r.work_core();
     return o.str();
 }
 

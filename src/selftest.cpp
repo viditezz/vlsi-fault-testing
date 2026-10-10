@@ -7,6 +7,8 @@
 //  5. PODEM: every generated test detects its fault (several random X-fills)
 //  6. random small circuits, exhaustive ground truth: PODEM says DETECTED iff the
 //     fault is detectable, REDUNDANT iff it is not (soundness + completeness)
+//  6b. PODEM under a tight backtrack budget on larger random circuits: restarts and
+//      aborts happen, and no verdict is wrong (exhaustive truth)
 //  7. every method runs end to end; compaction keeps coverage
 #include <algorithm>
 #include <cstdio>
@@ -173,9 +175,10 @@ void test_podem_tests(const Circuit& c, const FaultList& fl, std::mt19937_64& rn
     check(bad == 0, c.name + ": " + std::to_string(bad) + " PODEM tests fail to detect their fault");
 }
 
-std::string random_circuit(std::mt19937_64& rng, int id)
+std::string random_circuit(std::mt19937_64& rng, int id, int pi_lo = 3, int pi_hi = 8,
+                           int g_lo = 6, int g_hi = 30, bool sinks_are_outputs = false)
 {
-    std::uniform_int_distribution<int> npi(3, 8), ngate(6, 30);
+    std::uniform_int_distribution<int> npi(pi_lo, pi_hi), ngate(g_lo, g_hi);
     int p = npi(rng), m = ngate(rng);
     std::vector<std::string> names;
     std::ostringstream o;
@@ -203,6 +206,15 @@ std::string random_circuit(std::mt19937_64& rng, int id)
         gates.push_back(out);
     }
     std::vector<std::string> outs = {gates.back()};
+    if (sinks_are_outputs) {  // every gate that drives nothing is observable, as in a real netlist
+        std::string text = body.str();
+        for (const auto& g : gates)
+            if (text.find("(" + g + ",") == std::string::npos &&
+                text.find(" " + g + ",") == std::string::npos &&
+                text.find(" " + g + ")") == std::string::npos &&
+                text.find("(" + g + ")") == std::string::npos)
+                outs.push_back(g);
+    }
     if (m > 1) outs.push_back(gates[m - 2]);
     outs.push_back(gates[rng() % m]);
     if (rng() % 2) outs.push_back(names[rng() % names.size()]);  // sometimes a PI or mid gate
@@ -253,6 +265,55 @@ void test_random_circuits(int count, std::mt19937_64& rng)
     check(bad_vec == 0, std::to_string(bad_vec) + " PODEM vectors fail on random circuits");
 }
 
+// PODEM under a tight backtrack budget, on circuits big enough that the budget
+// binds: 12-16 inputs, 60-160 gates. Ground truth is exhaustive simulation of all
+// 2^n patterns with the parallel fault simulator (itself checked against the
+// serial reference in test [3+4]). Checks that restarts never produce a wrong
+// verdict: every DETECTED vector really detects its fault, and no REDUNDANT
+// verdict is given for a detectable fault. ABORTED is allowed.
+void test_podem_budget(int count, std::mt19937_64& rng)
+{
+    int wrong_red = 0, bad_vec = 0, faults = 0, redundant = 0, aborted = 0, deep = 0, proved = 0;
+    for (int t = 0; t < count; ++t) {
+        Circuit c = parse_bench_text(random_circuit(rng, t, 12, 16, 60, 160, true),
+                                     "big" + std::to_string(t));
+        FaultList fl = build_fault_list(c, true);
+        const int n = static_cast<int>(c.pis.size());
+        FaultSim truth(c, fl.faults);
+        for (int64_t base = 0; base < (int64_t(1) << n); base += 64) {
+            std::vector<uint64_t> w(n, 0);
+            for (int j = 0; j < 64; ++j)
+                for (int i = 0; i < n; ++i)
+                    if (((base + j) >> i) & 1) w[i] |= 1ULL << j;
+            truth.simulate_block(w, 64);
+        }
+        Scoap sc = compute_scoap(c);
+        Podem pd(c, sc, 64);
+        for (size_t f = 0; f < fl.faults.size(); ++f) {
+            ++faults;
+            bool detectable = truth.is_detected(static_cast<int>(f));
+            if (!detectable) ++redundant;
+            PodemResult r = pd.run(fl.faults[f]);
+            if (r.backtracks > 4) ++deep;  // past the first short attempt
+            if (r.status == PodemStatus::ABORTED) ++aborted;
+            if (r.status == PodemStatus::REDUNDANT) {
+                ++proved;
+                if (detectable) ++wrong_red;
+            }
+            if (r.status == PodemStatus::DETECTED) {
+                std::vector<uint8_t> v(n);
+                for (int i = 0; i < n; ++i) v[i] = r.pi[i] == LX ? (rng() & 1) : r.pi[i];
+                if (!reference_detects(c, fl.faults[f], v)) ++bad_vec;
+            }
+        }
+    }
+    std::printf("  %d circuits, %d faults (%d truly redundant): %d proved redundant, %d aborted,"
+                " %d needed more than 4 backtracks\n",
+                count, faults, redundant, proved, aborted, deep);
+    check(wrong_red == 0, std::to_string(wrong_red) + " detectable faults declared REDUNDANT");
+    check(bad_vec == 0, std::to_string(bad_vec) + " PODEM vectors fail under a tight budget");
+}
+
 }  // namespace
 
 int run_selftest(const std::string& dir)
@@ -294,9 +355,12 @@ int run_selftest(const std::string& dir)
     std::printf("[6] PODEM soundness + completeness on random circuits (exhaustive truth)\n");
     test_random_circuits(400, rng);
 
+    std::printf("[6b] PODEM under a tight backtrack budget (64) on larger random circuits\n");
+    test_podem_budget(60, rng);
+
     std::printf("[7] end-to-end methods\n");
     for (size_t i = 0; i < 2; ++i) {
-        for (std::string m : {"random", "podem", "fixed", "adaptive"}) {
+        for (std::string m : {"random", "podem", "fixed", "plateau", "adaptive"}) {
             RunConfig cfg;
             cfg.method = m;
             cfg.random_budget = 4096;

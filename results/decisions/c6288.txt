@@ -1,4 +1,3 @@
 pattern 128: stage 1  k=7708 over 2 blocks (bound: 1 per block), p=1
-pattern 512: stage 1  k=2 over 6 blocks (bound: 1 per block), p=0.052479
-pattern 896: stage 1  k=0 over 6 blocks (bound: 1 per block), p=0.00247875  REJECT -> probe PODEM
-pattern 896: probe -> PODEM yield 1.00892e-05 det/work, targetable 0
+pattern 512: stage 1  k=2 over 6 blocks (bound: 1 per block), p=0.0304026  REJECT -> probe PODEM
+pattern 512: probe 34 PODEM calls, 0 tests -> yield 0 det/work, targetable 0  NO TESTS -> SWITCH

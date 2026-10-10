@@ -1,11 +1,10 @@
 pattern 128: stage 1  k=1461 over 2 blocks (bound: 1 per block), p=1
-pattern 448: stage 1  k=249 over 5 blocks (bound: 1 per block), p=1
-pattern 832: stage 1  k=68 over 6 blocks (bound: 1 per block), p=1
-pattern 1216: stage 1  k=49 over 6 blocks (bound: 1 per block), p=1
-pattern 1600: stage 1  k=14 over 6 blocks (bound: 1 per block), p=0.998281
-pattern 1984: stage 1  k=5 over 6 blocks (bound: 1 per block), p=0.441121
-pattern 2368: stage 1  k=4 over 6 blocks (bound: 1 per block), p=0.280229
-pattern 2752: stage 1  k=5 over 6 blocks (bound: 1 per block), p=0.442075
-pattern 3136: stage 1  k=2 over 6 blocks (bound: 1 per block), p=0.0601684
-pattern 3520: stage 1  k=0 over 6 blocks (bound: 1 per block), p=0.00243643  REJECT -> probe PODEM
-pattern 3520: probe -> PODEM yield 0.000654681 det/work, targetable 0
+pattern 320: stage 1  k=188 over 3 blocks (bound: 1 per block), p=1
+pattern 640: stage 1  k=113 over 5 blocks (bound: 1 per block), p=1
+pattern 1024: stage 1  k=50 over 6 blocks (bound: 1 per block), p=1
+pattern 1408: stage 1  k=24 over 6 blocks (bound: 1 per block), p=1
+pattern 1792: stage 1  k=9 over 6 blocks (bound: 1 per block), p=0.913022
+pattern 2176: stage 1  k=5 over 6 blocks (bound: 1 per block), p=0.438537
+pattern 2560: stage 1  k=1 over 6 blocks (bound: 1 per block), p=0.0168649  REJECT -> probe PODEM
+pattern 2560: probe 16 PODEM calls, 9 tests -> yield 0.000748474 det/work, targetable 2
+pattern 2624: targetable 2 < 6: a test window costs more than PODEM on all of them -> SWITCH

@@ -3,8 +3,13 @@
 //   random    : pure random patterns until the budget or 100% coverage
 //   podem     : PODEM on every fault (with fault dropping) — deterministic baseline
 //   fixed     : N random patterns, then PODEM on the rest — fixed switch point
-//   adaptive  : random patterns until the stagnation test fires, then PODEM on
-//               the rest — this project's method
+//   plateau   : random patterns until the last W blocks found <= K new faults,
+//               then PODEM on the rest — a simple heuristic baseline
+//   stage1    : adaptive with stage 2 off — switch as soon as random's rate is
+//               significantly below the cost bound of ~1 fault per block
+//   adaptive  : random patterns until random's measured detection rate falls
+//               below PODEM's measured rate, then PODEM on the rest — this
+//               project's method
 //
 // All methods share the same fault list, fault simulator and PODEM engine, so
 // any difference comes from *when* (and whether) the switch happens.
@@ -28,16 +33,20 @@
 constexpr double kPodemWorkWeight = 1.0;
 
 struct RunConfig {
-    std::string method = "adaptive";  // random | podem | fixed | adaptive
+    std::string method = "adaptive";  // random | podem | fixed | plateau | stage1 | adaptive
     uint64_t seed = 1;
     int64_t random_budget = 32768;    // max random patterns (random; cap for adaptive)
     int64_t fixed_switch = 1024;      // fixed: random patterns before switching
     int backtrack_limit = 1024;
     double alpha = 0.05;              // adaptive: significance level
     int confirm = 2;                  // adaptive: consecutive rejections to switch
+    double window_mu = 6.0;           // adaptive: break-even detections per window
+    bool stage2 = true;               // adaptive: measure PODEM before switching (false: switch on stage 1)
     int64_t warmup = 128;             // adaptive: patterns before the first test
     int probe_size = 16;              // adaptive: PODEM calls per yield probe
     double podem_weight = kPodemWorkWeight;
+    int plateau_blocks = 6;           // plateau: window length in 64-pattern blocks
+    int plateau_max = 1;              // plateau: switch when window found <= this many
 };
 
 struct CurvePoint {
@@ -62,6 +71,11 @@ struct RunResult {
     int compacted = 0;            // after reverse-order compaction
     int64_t switch_at = -1;       // random patterns applied when PODEM took over
     double work_random = 0, work_podem = 0, work_total = 0;
+    // PODEM work on faults that end the run undetected (proved redundant, or
+    // aborted and never detected). Every flow pays it whenever it switches, so
+    // work_total - work_unresolved is the part the switch point can change.
+    double work_unresolved = 0;
+    double work_core() const { return work_total - work_unresolved; }
     double ms_random = 0, ms_podem = 0, ms_total = 0, ms_compact = 0;
     double fc() const { return faults ? 100.0 * detected / faults : 0; }
     double fe() const { return faults ? 100.0 * (detected + redundant) / faults : 0; }

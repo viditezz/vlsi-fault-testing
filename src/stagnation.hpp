@@ -43,7 +43,10 @@ struct StagnationDecision {
 
 class StagnationDetector {
 public:
-    StagnationDetector(double alpha, int confirm) : alpha_(alpha), confirm_(confirm) {}
+    // window_mu: expected detections at break-even that a window must reach
+    // before it is tested (its length). alpha: rejection level for the tail test.
+    StagnationDetector(double alpha, int confirm, double window_mu)
+        : alpha_(alpha), confirm_(confirm), window_mu_(window_mu) {}
 
     void add_block(int new_detections, double work)
     {
@@ -66,6 +69,7 @@ public:
 private:
     double alpha_;
     int confirm_;
+    double window_mu_;
     int streak_ = 0;
     size_t start_ = 0;  // first block of the open window
     std::vector<int> det_;

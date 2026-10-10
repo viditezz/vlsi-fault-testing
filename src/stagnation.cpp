@@ -21,14 +21,13 @@ double poisson_cdf(int64_t k, double mu)
 bool StagnationDetector::test(double podem_yield, StagnationDecision* out)
 {
     StagnationDecision d;
-    const double needed = -2.0 * std::log(alpha_);
     for (size_t b = start_; b < det_.size(); ++b) {
         d.k += det_[b];
         d.work += work_[b];
         ++d.blocks;
     }
     d.mu = podem_yield * d.work;
-    d.enough_evidence = d.mu >= needed;
+    d.enough_evidence = d.mu >= window_mu_;
     if (d.enough_evidence) {
         d.p = poisson_cdf(d.k, d.mu);
         d.reject = d.p < alpha_;
