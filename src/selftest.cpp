@@ -21,6 +21,7 @@
 #include "atpg_flow.hpp"
 #include "circuit.hpp"
 #include "fault_sim.hpp"
+#include "sat_atpg.hpp"
 #include "faults.hpp"
 #include "logic.hpp"
 #include "podem.hpp"
@@ -314,6 +315,95 @@ void test_podem_budget(int count, std::mt19937_64& rng)
     check(bad_vec == 0, std::to_string(bad_vec) + " PODEM vectors fail under a tight budget");
 }
 
+// SAT-based test generation against exhaustive truth: on small random circuits
+// (all 2^n patterns by serial reference) and on larger ones (all 2^n patterns by
+// the parallel fault simulator). Every verdict must match; every vector must detect.
+void test_sat_atpg(int small_count, int big_count, std::mt19937_64& rng)
+{
+    int wrong = 0, bad_vec = 0, aborted = 0, faults = 0, redundant = 0;
+    for (int t = 0; t < small_count + big_count; ++t) {
+        const bool big = t >= small_count;
+        Circuit c = big ? parse_bench_text(random_circuit(rng, t, 12, 16, 60, 160, true),
+                                           "satbig" + std::to_string(t))
+                        : parse_bench_text(random_circuit(rng, t), "satsmall" + std::to_string(t));
+        FaultList fl = build_fault_list(c, false);  // uncollapsed: also covers branch / PO-branch faults
+        const int n = static_cast<int>(c.pis.size());
+        std::vector<char> truth(fl.faults.size(), 0);
+        if (big) {
+            FaultSim fs(c, fl.faults);
+            for (int64_t base = 0; base < (int64_t(1) << n); base += 64) {
+                std::vector<uint64_t> w(n, 0);
+                for (int j = 0; j < 64; ++j)
+                    for (int i = 0; i < n; ++i)
+                        if (((base + j) >> i) & 1) w[i] |= 1ULL << j;
+                fs.simulate_block(w, 64);
+            }
+            for (size_t f = 0; f < fl.faults.size(); ++f) truth[f] = fs.is_detected(static_cast<int>(f));
+        } else {
+            for (size_t f = 0; f < fl.faults.size(); ++f)
+                for (int64_t x = 0; x < (int64_t(1) << n) && !truth[f]; ++x) {
+                    std::vector<uint8_t> v(n);
+                    for (int i = 0; i < n; ++i) v[i] = (x >> i) & 1;
+                    truth[f] = reference_detects(c, fl.faults[f], v);
+                }
+        }
+        SatAtpg sat(c);
+        for (size_t f = 0; f < fl.faults.size(); ++f) {
+            ++faults;
+            if (!truth[f]) ++redundant;
+            SatAtpgResult r = sat.run(fl.faults[f], 1000000);
+            if (r.status == PodemStatus::ABORTED) {
+                ++aborted;
+                continue;
+            }
+            if ((r.status == PodemStatus::DETECTED) != static_cast<bool>(truth[f])) ++wrong;
+            if (r.status == PodemStatus::DETECTED) {
+                std::vector<uint8_t> v(n);
+                for (int i = 0; i < n; ++i) v[i] = r.pi[i] == LX ? (rng() & 1) : r.pi[i];
+                if (!reference_detects(c, fl.faults[f], v)) ++bad_vec;
+            }
+        }
+    }
+    std::printf("  %d small + %d large random circuits, %d faults (%d truly redundant), %d aborted\n",
+                small_count, big_count, faults, redundant, aborted);
+    check(wrong == 0, std::to_string(wrong) + " SAT verdicts disagree with exhaustive truth");
+    check(bad_vec == 0, std::to_string(bad_vec) + " SAT vectors fail to detect their fault");
+    check(aborted == 0, std::to_string(aborted) + " SAT runs hit the conflict limit");
+}
+
+// On the real benchmarks: PODEM with a small budget (so it aborts often) against
+// SAT. A PODEM REDUNDANT verdict must be confirmed UNSAT; a PODEM DETECTED fault
+// must be SAT; every PODEM abort must be resolved, and SAT vectors must detect.
+void test_podem_vs_sat(const Circuit& c, const FaultList& fl, std::mt19937_64& rng)
+{
+    Scoap sc = compute_scoap(c);
+    Podem pd(c, sc, 32);
+    SatAtpg sat(c);
+    int conflict = 0, bad_vec = 0, unresolved = 0, red_sat = 0, aborts = 0, red_podem = 0;
+    for (const Fault& f : fl.faults) {
+        PodemResult p = pd.run(f);
+        SatAtpgResult s = sat.run(f, 2000000);
+        if (s.status == PodemStatus::ABORTED) { ++unresolved; continue; }
+        if (s.status == PodemStatus::REDUNDANT) ++red_sat;
+        if (p.status == PodemStatus::ABORTED) ++aborts;
+        if (p.status == PodemStatus::REDUNDANT) {
+            ++red_podem;
+            if (s.status != PodemStatus::REDUNDANT) ++conflict;
+        }
+        if (p.status == PodemStatus::DETECTED && s.status != PodemStatus::DETECTED) ++conflict;
+        if (s.status == PodemStatus::DETECTED) {
+            std::vector<uint8_t> v(c.pis.size());
+            for (size_t i = 0; i < v.size(); ++i) v[i] = s.pi[i] == LX ? (rng() & 1) : s.pi[i];
+            if (!reference_detects(c, f, v)) ++bad_vec;
+        }
+    }
+    std::printf("  %-6s %5zu faults: SAT proves %d redundant (PODEM@32: %d proved, %d aborted)\n",
+                c.name.c_str(), fl.faults.size(), red_sat, red_podem, aborts);
+    check(conflict == 0, c.name + ": " + std::to_string(conflict) + " PODEM / SAT verdicts contradict");
+    check(bad_vec == 0, c.name + ": " + std::to_string(bad_vec) + " SAT vectors fail to detect");
+    check(unresolved == 0, c.name + ": SAT left " + std::to_string(unresolved) + " faults unresolved");
+}
+
 }  // namespace
 
 int run_selftest(const std::string& dir)
@@ -358,9 +448,35 @@ int run_selftest(const std::string& dir)
     std::printf("[6b] PODEM under a tight backtrack budget (64) on larger random circuits\n");
     test_podem_budget(60, rng);
 
+    std::printf("[6c] SAT test generation vs exhaustive truth (uncollapsed faults)\n");
+    test_sat_atpg(300, 40, rng);
+
+    std::printf("[6d] PODEM (budget 32) vs SAT on the benchmarks\n");
+    for (size_t i = 0; i < 6; ++i) test_podem_vs_sat(cs[i], fls[i], rng);
+
+    std::printf("[6e] full-scan DFF handling (ISCAS-89 s27)\n");
+    {
+        Circuit s27 = parse_bench(dir + "/s27.bench");
+        FaultList fl27 = build_fault_list(s27, true);
+        check(s27.scan_cells == 3, "s27 should have 3 scan cells");
+        check(s27.pis.size() == 7 && s27.pos.size() == 4, "s27 full-scan view should have 7 PIs and 4 POs");
+        check(s27.num_gates() == 10, "s27 should have 10 gates");
+        check(fl27.faults.size() == 32, "s27 should have 32 collapsed faults");
+        // every method resolves every fault; the pseudo-PI / pseudo-PO ends are all exercised
+        for (std::string m : {"random", "podem", "fixed", "plateau", "stage1", "adaptive"}) {
+            RunConfig cfg;
+            cfg.method = m;
+            Scoap sc = compute_scoap(s27);
+            RunResult r = run_atpg(s27, fl27, sc, cfg);
+            check(m == "random" || r.detected + r.redundant == r.faults, "s27 " + m + ": faults unresolved");
+            std::printf("  s27    %-9s FC %7.3f%%  FE %7.3f%%\n", m.c_str(), r.fc(), r.fe());
+        }
+        test_podem_vs_sat(s27, fl27, rng);
+    }
+
     std::printf("[7] end-to-end methods\n");
     for (size_t i = 0; i < 2; ++i) {
-        for (std::string m : {"random", "podem", "fixed", "plateau", "adaptive"}) {
+        for (std::string m : {"random", "podem", "fixed", "plateau", "stage1", "adaptive"}) {
             RunConfig cfg;
             cfg.method = m;
             cfg.random_budget = 4096;
@@ -370,6 +486,9 @@ int run_selftest(const std::string& dir)
             bool accounted = m == "random" ||
                              r.detected + r.redundant + r.aborted == r.faults;
             check(accounted, cs[i].name + " " + m + ": faults not all accounted for");
+            if (m != "random")
+                check(r.aborted == 0 && r.detected + r.redundant == r.faults,
+                      cs[i].name + " " + m + ": SAT fallback left faults unresolved");
             check(r.compacted <= r.tests, cs[i].name + " " + m + ": compaction grew the set");
             std::printf("  %-6s %-9s FC %7.3f%%  tests %d -> %d\n", cs[i].name.c_str(), m.c_str(),
                         r.fc(), r.tests, r.compacted);

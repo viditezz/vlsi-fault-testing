@@ -5,6 +5,13 @@ Shares no simulation code with faultatpg: its own .bench parser, levelization an
 gate evaluation (Python big ints, one bit per test vector), serial fault injection.
 Only the collapsed fault list is taken from `faultatpg faults`.
 
+What it checks: that the committed test set really detects the number of faults the
+tool claims. What it does not check: completeness. Whether the faults left undetected
+are truly redundant is established by the tool's SAT fallback, which `make test`
+validates against exhaustive simulation. The script also prints how many faults the
+tool says are proved redundant, so detected + redundant can be compared with the
+collapsed fault count.
+
 Usage: scripts/check_tests.py ./faultatpg results c432 c880 ...
 """
 import re, subprocess, sys, csv
@@ -67,7 +74,12 @@ if __name__ == '__main__':
     tool, rdir = sys.argv[1], sys.argv[2]
     claimed = {r['circuit']: int(r['detected']) for r in csv.DictReader(open(rdir + '/summary.csv'))
                if r['method'] == 'adaptive' and r['seed'] == '1'}
+    redundant = {r['circuit']: int(r['redundant']) for r in csv.DictReader(open(rdir + '/summary.csv'))
+                 if r['method'] == 'adaptive' and r['seed'] == '1'}
     for c in sys.argv[3:]:
         fl = subprocess.run([tool, 'faults', f'benchmarks/{c}.bench'], capture_output=True, text=True).stdout.splitlines()
         d, nf, nt = check(f'benchmarks/{c}.bench', f'{rdir}/tests/{c}_adaptive.txt', fl)
-        print(f'{c}: {nt} tests, independent {d}/{nf}, tool claims {claimed[c]}  {"OK" if d == claimed[c] else "MISMATCH"}', flush=True)
+        red = redundant[c]
+        print(f'{c}: {nt} tests, independent {d}/{nf}, tool claims {claimed[c]}  '
+              f'{"OK" if d == claimed[c] else "MISMATCH"};  tool proves {red} redundant -> '
+              f'{"all faults accounted for" if d + red == nf else "NOT ALL ACCOUNTED FOR"}', flush=True)

@@ -85,8 +85,9 @@ private:
     int jitter_scale_ = 0;          // 0 on the first attempt: pure SCOAP
     bool flip_values_ = false;
     mutable std::mt19937_64 rand_;
-    // Random perturbation of SCOAP costs on restart attempts. Scaled to the
-    // circuit's typical controllability so it reorders near-ties, not everything.
+    // Random perturbation of SCOAP costs on restart attempts: a small constant
+    // (< 8 * attempt-number cost units), not scaled to the circuit. It reorders
+    // near-ties between candidate lines, not the whole preference order.
     int64_t jitter(int /*line*/) const
     {
         return jitter_scale_ ? static_cast<int64_t>(rand_() % (8 * jitter_scale_)) : 0;

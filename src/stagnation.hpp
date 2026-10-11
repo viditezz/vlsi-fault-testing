@@ -17,9 +17,9 @@
 //
 // Windows are not a fixed pattern count. Each window starts where the previous
 // test ended and grows forward block by block until the break-even expectation
-// y_p * R reaches -2 ln(alpha) — the smallest window in which seeing zero
-// detections would be significant. Then it is tested once and a fresh window
-// starts. Non-overlapping windows keep the early high-yield burst out of later
+// y_p * R reaches `window_mu` (default 6; independent of alpha). With
+// mu = 6 and alpha = 0.05, a window rejects exactly when it saw k <= 1
+// detections. Then it is tested once and a fresh window starts. Non-overlapping windows keep the early high-yield burst out of later
 // tests (the detection rate decays, so mixing regimes would hide stagnation)
 // and make consecutive tests independent: requiring `confirm` = 2 consecutive
 // rejections bounds the false-switch probability per decision by alpha^2.

@@ -8,13 +8,7 @@
 //   faultatpg selftest  <bench_dir>
 //   faultatpg calibrate <bench>                 ns per work unit (fault sim vs PODEM)
 //
-// Options: --method random|podem|fixed|plateau|stage1|adaptive  --seed N  --budget N
-//          --switch N  --bt N  --alpha A  --confirm N  --probe N  --warmup N  --window MU
-//          --weight W  --plateau-blocks W  --plateau-max K
-//          --curve FILE  --tests FILE
-// Sweep:   --seeds N  --circuits c17,c432,...  --methods random,podem,fixed,plateau,stage1,adaptive
-//          --quiet 1 (summary.csv only)
-//          --grid fine|coarse   (fixed switch points: 19 from 64 to 32768, or 128/1024/8192)
+// `faultatpg` with no arguments prints every option and its default.
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -22,9 +16,11 @@
 #include <iostream>
 #include <map>
 #include <random>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "atpg_flow.hpp"
@@ -48,45 +44,98 @@ void usage()
         "  faultatpg info      <bench>\n"
         "  faultatpg sim       <bench> <bits>      e.g. sim c17.bench 01101\n"
         "  faultatpg faults    <bench>\n"
-        "  faultatpg run       <bench> [--method M] [--seed N] [--budget N] [--switch N]\n"
-        "                      [--bt N] [--alpha A] [--confirm N] [--probe N] [--warmup N]\n"
-        "                      [--weight W] [--curve FILE] [--tests FILE]\n"
-        "  faultatpg sweep     <bench_dir> <out_dir> [--seeds N] [--circuits a,b,...] [--bt N]\n"
+        "  faultatpg run       <bench> [options]\n"
+        "  faultatpg sweep     <bench_dir> <out_dir> [options]\n"
         "  faultatpg selftest  <bench_dir>\n"
         "  faultatpg calibrate <bench>\n"
-        "methods: random | podem | fixed | adaptive\n";
+        "run options:\n"
+        "  --method M         random | podem | fixed | plateau | stage1 | adaptive   (adaptive)\n"
+        "  --seed N           random seed                                             (1)\n"
+        "  --budget N         random pattern cap                                      (32768)\n"
+        "  --switch N         fixed: random patterns before PODEM                     (1024)\n"
+        "  --bt N             PODEM backtrack limit                                   (1024)\n"
+        "  --alpha A          adaptive/stage1: significance level, 0 < A < 1          (0.05)\n"
+        "  --confirm N        consecutive rejections needed to switch                 (2)\n"
+        "  --window MU        break-even detections a test window must reach          (6)\n"
+        "  --probe N          PODEM calls per yield probe (adaptive)                  (16)\n"
+        "  --warmup N         random patterns before the first test                   (128)\n"
+        "  --stage2 0|1       adaptive: measure PODEM before switching                (1)\n"
+        "  --plateau-blocks W plateau: window length in 64-pattern blocks             (6)\n"
+        "  --plateau-max K    plateau: switch when the window found <= K faults       (1)\n"
+        "  --weight W         cost of one PODEM evaluation vs one fault-sim evaluation (1)\n"
+        "  --resolve 0|1      SAT fallback for PODEM aborts (not used by random)      (1)\n"
+        "  --sat-limit N      conflict limit per SAT call                             (2000000)\n"
+        "  --curve FILE       write the coverage-vs-work curve\n"
+        "  --tests FILE       write the compacted test set\n"
+        "sweep options: --seeds N  --circuits a,b,...  --methods m1,m2,...  --grid fine|coarse\n"
+        "               --quiet 1 (summary.csv only), plus every run option except\n"
+        "               --method, --seed, --curve and --tests\n";
 }
 
-std::map<std::string, std::string> parse_opts(int argc, char** argv, int start)
+const std::set<std::string> kConfigKeys = {
+    "budget", "switch", "bt", "alpha", "confirm", "window", "probe", "warmup", "stage2",
+    "plateau-blocks", "plateau-max", "weight", "resolve", "sat-limit"};
+
+// Parses "--key value" pairs; anything not in `allowed` is an error (a typo
+// must not silently fall back to a default).
+std::map<std::string, std::string> parse_opts(int argc, char** argv, int start,
+                                              const std::set<std::string>& allowed)
 {
     std::map<std::string, std::string> o;
     for (int i = start; i < argc; ++i) {
         std::string a = argv[i];
-        if (a.rfind("--", 0) != 0 || i + 1 >= argc)
-            throw std::runtime_error("bad option: " + a);
-        o[a.substr(2)] = argv[++i];
+        if (a.rfind("--", 0) != 0) throw std::runtime_error("unexpected argument: " + a);
+        std::string key = a.substr(2);
+        if (!allowed.count(key)) throw std::runtime_error("unknown option: " + a + " (see usage)");
+        if (i + 1 >= argc) throw std::runtime_error("option " + a + " needs a value");
+        o[key] = argv[++i];
     }
     return o;
+}
+
+template <class T>
+T number(const std::string& key, const std::string& v, T lo, T hi)
+{
+    T x{};
+    try {
+        size_t used = 0;
+        if constexpr (std::is_floating_point_v<T>) x = static_cast<T>(std::stod(v, &used));
+        else x = static_cast<T>(std::stoll(v, &used));
+        if (used != v.size()) throw std::invalid_argument(v);
+    } catch (const std::exception&) {
+        throw std::runtime_error("--" + key + ": '" + v + "' is not a number");
+    }
+    if (x < lo || x > hi)
+        throw std::runtime_error("--" + key + ": " + v + " is out of range");
+    return x;
 }
 
 RunConfig config_from(const std::map<std::string, std::string>& o)
 {
     RunConfig cfg;
+    const int64_t big = int64_t(1) << 40;
     for (const auto& [k, v] : o) {
-        if (k == "method") cfg.method = v;
-        else if (k == "seed") cfg.seed = std::stoull(v);
-        else if (k == "budget") cfg.random_budget = std::stoll(v);
-        else if (k == "switch") cfg.fixed_switch = std::stoll(v);
-        else if (k == "bt") cfg.backtrack_limit = std::stoi(v);
-        else if (k == "alpha") cfg.alpha = std::stod(v);
-        else if (k == "confirm") cfg.confirm = std::stoi(v);
-        else if (k == "window") cfg.window_mu = std::stod(v);
-        else if (k == "stage2") cfg.stage2 = v != "0";
-        else if (k == "probe") cfg.probe_size = std::stoi(v);
-        else if (k == "warmup") cfg.warmup = std::stoll(v);
-        else if (k == "weight") cfg.podem_weight = std::stod(v);
-        else if (k == "plateau-blocks") cfg.plateau_blocks = std::stoi(v);
-        else if (k == "plateau-max") cfg.plateau_max = std::stoi(v);
+        if (k == "method") {
+            static const std::set<std::string> ok = {"random", "podem", "fixed", "plateau",
+                                                     "stage1", "adaptive"};
+            if (!ok.count(v)) throw std::runtime_error("--method: unknown method '" + v + "'");
+            cfg.method = v;
+        }
+        else if (k == "seed") cfg.seed = static_cast<uint64_t>(number<int64_t>(k, v, 0, big));
+        else if (k == "budget") cfg.random_budget = number<int64_t>(k, v, 64, big);
+        else if (k == "switch") cfg.fixed_switch = number<int64_t>(k, v, 0, big);
+        else if (k == "bt") cfg.backtrack_limit = number<int>(k, v, 1, 1 << 30);
+        else if (k == "alpha") cfg.alpha = number<double>(k, v, 1e-12, 0.999999);
+        else if (k == "confirm") cfg.confirm = number<int>(k, v, 1, 1000);
+        else if (k == "window") cfg.window_mu = number<double>(k, v, 0.1, 1e6);
+        else if (k == "stage2") cfg.stage2 = number<int>(k, v, 0, 1) != 0;
+        else if (k == "probe") cfg.probe_size = number<int>(k, v, 1, 100000);
+        else if (k == "warmup") cfg.warmup = number<int64_t>(k, v, 0, big);
+        else if (k == "weight") cfg.podem_weight = number<double>(k, v, 1e-6, 1e6);
+        else if (k == "plateau-blocks") cfg.plateau_blocks = number<int>(k, v, 1, 100000);
+        else if (k == "plateau-max") cfg.plateau_max = number<int>(k, v, 0, 100000000);
+        else if (k == "resolve") cfg.resolve = number<int>(k, v, 0, 1) != 0;
+        else if (k == "sat-limit") cfg.sat_conflicts = number<int64_t>(k, v, 1, big);
     }
     return cfg;
 }
@@ -181,8 +230,11 @@ void print_result(const RunResult& r)
     std::printf("         random applied %lld (kept %d)  podem calls %d (vectors %d, probe %d)\n",
                 static_cast<long long>(r.random_applied), r.random_kept, r.podem_calls,
                 r.podem_vectors, r.probe_calls);
-    std::printf("         tests %d -> %d compacted   work %.3g   time %.2f ms (random %.2f, podem %.2f)\n",
-                r.tests, r.compacted, r.work_total, r.ms_total, r.ms_random, r.ms_podem);
+    std::printf("         tests %d -> %d compacted   work %.3g   time %.2f ms (random %.2f, podem %.2f, sat %.2f)\n",
+                r.tests, r.compacted, r.work_total, r.ms_total, r.ms_random, r.ms_podem, r.ms_sat);
+    if (r.sat_calls > 0)
+        std::printf("         SAT fallback: %d PODEM aborts -> %d tests, %d proved redundant, %.3g propagation steps\n",
+                    r.sat_calls, r.sat_vectors, r.sat_redundant, r.work_sat);
     if (r.method == "adaptive" || r.method == "plateau" || r.method == "stage1")
         std::printf("         switched after %lld random patterns\n",
                     static_cast<long long>(r.switch_at));
@@ -216,7 +268,9 @@ int cmd_sweep(const std::string& dir, const std::string& out,
         std::string x;
         while (std::getline(ss, x, ',')) circuits.push_back(x);
     }
-    int seeds = o.count("seeds") ? std::stoi(o.at("seeds")) : 5;
+    int seeds = o.count("seeds") ? number<int>("seeds", o.at("seeds"), 1, 10000) : 10;
+    if (o.count("grid") && o.at("grid") != "fine" && o.at("grid") != "coarse")
+        throw std::runtime_error("--grid: expected fine or coarse");
     RunConfig base = config_from(o);
 
     struct M { std::string method; int64_t sw; };
@@ -229,6 +283,13 @@ int cmd_sweep(const std::string& dir, const std::string& out,
         }
     }
     std::string want = o.count("methods") ? o.at("methods") : "random,podem,fixed,plateau,stage1,adaptive";
+    {
+        std::stringstream ss(want);
+        std::string m;
+        static const std::set<std::string> ok = {"random", "podem", "fixed", "plateau", "stage1", "adaptive"};
+        while (std::getline(ss, m, ','))
+            if (!ok.count(m)) throw std::runtime_error("--methods: unknown method '" + m + "'");
+    }
     auto wanted = [&](const std::string& m) { return ("," + want + ",").find("," + m + ",") != std::string::npos; };
     std::vector<M> methods;
     if (wanted("random")) methods.push_back({"random", 0});
@@ -238,7 +299,7 @@ int cmd_sweep(const std::string& dir, const std::string& out,
     if (wanted("plateau")) methods.push_back({"plateau", 0});
     if (wanted("stage1")) methods.push_back({"stage1", 0});
     if (wanted("adaptive")) methods.push_back({"adaptive", 0});
-    bool quiet = o.count("quiet") > 0;
+    bool quiet = o.count("quiet") > 0 && o.at("quiet") != "0";
 
     fs::create_directories(out);
     if (!quiet) {
@@ -342,10 +403,16 @@ int main(int argc, char** argv)
             if (argc != 4) { usage(); return 1; }
             return cmd_sim(argv[2], argv[3]);
         }
-        if (cmd == "run") return cmd_run(argv[2], parse_opts(argc, argv, 3));
+        if (cmd == "run") {
+            std::set<std::string> allowed = kConfigKeys;
+            allowed.insert({"method", "seed", "curve", "tests"});
+            return cmd_run(argv[2], parse_opts(argc, argv, 3, allowed));
+        }
         if (cmd == "sweep") {
             if (argc < 4) { usage(); return 1; }
-            return cmd_sweep(argv[2], argv[3], parse_opts(argc, argv, 4));
+            std::set<std::string> allowed = kConfigKeys;
+            allowed.insert({"seeds", "circuits", "methods", "grid", "quiet"});
+            return cmd_sweep(argv[2], argv[3], parse_opts(argc, argv, 4, allowed));
         }
         usage();
         return 1;

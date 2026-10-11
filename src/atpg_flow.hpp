@@ -42,6 +42,8 @@ struct RunConfig {
     int confirm = 2;                  // adaptive: consecutive rejections to switch
     double window_mu = 6.0;           // adaptive: break-even detections per window
     bool stage2 = true;               // adaptive: measure PODEM before switching (false: switch on stage 1)
+    bool resolve = true;              // SAT fallback for faults PODEM aborts on (not used by `random`)
+    int64_t sat_conflicts = 2000000;  // conflict limit per SAT call
     int64_t warmup = 128;             // adaptive: patterns before the first test
     int probe_size = 16;              // adaptive: PODEM calls per yield probe
     double podem_weight = kPodemWorkWeight;
@@ -54,7 +56,7 @@ struct CurvePoint {
     int detected;      // faults detected so far
     double work;       // generation work so far
     double ms;         // wall-clock so far
-    char phase;        // 'R' random, 'p' probe PODEM, 'P' PODEM phase
+    char phase;        // 'R' random, 'p' probe PODEM, 'P' PODEM phase, 'S' SAT fallback
 };
 
 struct RunResult {
@@ -67,14 +69,22 @@ struct RunResult {
     int podem_vectors = 0;        // deterministic patterns
     int podem_calls = 0;
     int probe_calls = 0;
+    int sat_calls = 0;            // faults PODEM aborted on, sent to the SAT fallback
+    int sat_vectors = 0;          // ... that SAT turned into tests
+    int sat_redundant = 0;        // ... that SAT proved redundant
     int tests = 0;                // random_kept + podem_vectors
     int compacted = 0;            // after reverse-order compaction
     int64_t switch_at = -1;       // random patterns applied when PODEM took over
     double work_random = 0, work_podem = 0, work_total = 0;
-    // PODEM work on faults that end the run undetected (proved redundant, or
-    // aborted and never detected). Every flow pays it whenever it switches, so
-    // work_total - work_unresolved is the part the switch point can change.
+    // PODEM work on faults that end the run proved redundant (by PODEM, or by the
+    // SAT fallback after PODEM aborted). The set of redundant faults is a property
+    // of the circuit, identical for every flow, and every flow pays for them
+    // wherever it switches, so work_total - work_unresolved is the part the
+    // switch point can change.
     double work_unresolved = 0;
+    // Fallback cost, in SAT-solver propagation steps. A different unit from the
+    // gate-evaluation work above, so it is reported separately and not added to it.
+    double work_sat = 0, ms_sat = 0;
     double work_core() const { return work_total - work_unresolved; }
     double ms_random = 0, ms_podem = 0, ms_total = 0, ms_compact = 0;
     double fc() const { return faults ? 100.0 * detected / faults : 0; }

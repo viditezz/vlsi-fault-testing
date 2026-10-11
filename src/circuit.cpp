@@ -35,9 +35,6 @@ GateType parse_type(const std::string& raw, int line_no)
     if (t == "BUF" || t == "BUFF") return GateType::BUF;
     if (t == "XOR") return GateType::XOR;
     if (t == "XNOR") return GateType::XNOR;
-    if (t == "DFF")
-        throw std::runtime_error("line " + std::to_string(line_no) +
-                                 ": DFF found — only combinational circuits are supported");
     throw std::runtime_error("line " + std::to_string(line_no) + ": unknown gate type '" + raw + "'");
 }
 
@@ -130,6 +127,7 @@ Circuit parse_bench_text(const std::string& text, const std::string& name)
     std::istringstream in(text);
     std::string line;
     int line_no = 0;
+    std::vector<int> scan_d;  // data inputs of the DFFs, to become pseudo-POs
 
     while (std::getline(in, line)) {
         ++line_no;
@@ -163,7 +161,26 @@ Circuit parse_bench_text(const std::string& text, const std::string& name)
         size_t open = expr.find('(');
         if (open == std::string::npos)
             throw std::runtime_error("line " + std::to_string(line_no) + ": malformed: " + line);
-        GateType type = parse_type(trim(expr.substr(0, open)), line_no);
+        const std::string type_name = trim(expr.substr(0, open));
+        if (upper(type_name) == "DFF") {
+            // Full scan: the flip-flop output becomes a primary input, its data
+            // input becomes a primary output.
+            std::string d = inside_parens(expr, line_no);
+            if (d.empty() || d.find(',') != std::string::npos)
+                throw std::runtime_error("line " + std::to_string(line_no) +
+                                         ": DFF must have exactly 1 input");
+            int q = get_or_create(c, out);
+            if (c.sig[q].is_pi || c.sig[q].is_gate)
+                throw std::runtime_error("line " + std::to_string(line_no) + ": signal '" + out +
+                                         "' defined twice");
+            c.sig[q].is_pi = true;
+            c.sig[q].type = GateType::INPUT;
+            c.pis.push_back(q);
+            ++c.scan_cells;
+            scan_d.push_back(get_or_create(c, d));
+            continue;
+        }
+        GateType type = parse_type(type_name, line_no);
 
         int g = get_or_create(c, out);
         if (c.sig[g].is_pi || c.sig[g].is_gate)
@@ -186,6 +203,12 @@ Circuit parse_bench_text(const std::string& text, const std::string& name)
         c.sig[g].is_gate = true;
         c.sig[g].fanins = std::move(fanins);
     }
+
+    for (int d : scan_d)
+        if (!c.sig[d].is_po) {
+            c.sig[d].is_po = true;
+            c.pos.push_back(d);
+        }
 
     for (const auto& s : c.sig)
         if (!s.is_pi && !s.is_gate)

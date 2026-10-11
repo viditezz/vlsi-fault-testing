@@ -32,14 +32,19 @@ struct Circuit {
     std::vector<int> pos;                        // in declaration order
     std::vector<int> order;                      // gates in topological order
     int max_level = 0;
+    int scan_cells = 0;                          // DFFs converted to pseudo-PI / pseudo-PO pairs
 
     int num_signals() const { return static_cast<int>(sig.size()); }
     int num_gates() const { return static_cast<int>(order.size()); }
 };
 
-// Parses a combinational .bench file, builds fanouts and levelizes it.
-// Throws std::runtime_error on malformed input, undefined signals, sequential
-// elements, or combinational cycles.
+// Parses a .bench file, builds fanouts and levelizes it.
+// Sequential circuits (ISCAS-89) are read as full scan: each `q = DFF(d)` makes
+// q a pseudo primary input and d a pseudo primary output, so test generation sees
+// the combinational logic between scan cells. Pseudo-PIs follow the real inputs
+// and pseudo-POs follow the real outputs, both in file order.
+// Throws std::runtime_error on malformed input, undefined signals, or
+// combinational cycles.
 Circuit parse_bench(const std::string& path);
 
 // Same, from text already in memory (used by the self-tests).

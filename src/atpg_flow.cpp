@@ -12,6 +12,7 @@
 #include "fault_sim.hpp"
 #include "logic.hpp"
 #include "podem.hpp"
+#include "sat_atpg.hpp"
 #include "stagnation.hpp"
 
 namespace {
@@ -27,7 +28,7 @@ class Session {
 public:
     Session(const Circuit& c, const FaultList& fl, const Scoap& sc, const RunConfig& cfg)
         : c_(c), fl_(fl), cfg_(cfg), fs_(c, fl.faults), podem_(c, sc, cfg.backtrack_limit),
-          rng_(cfg.seed * 0x9E3779B97F4A7C15ULL + 12345)
+          sat_(c), rng_(cfg.seed * 0x9E3779B97F4A7C15ULL + 12345)
     {
         R_.circuit = c.name;
         R_.method = cfg.method;
@@ -122,7 +123,8 @@ public:
     void run_random(int64_t limit)
     {
         auto t = Clock::now();
-        while (fs_.num_pending() > 0 && R_.random_applied < limit) random_block(64);
+        while (fs_.num_pending() > 0 && R_.random_applied < limit)
+            random_block(static_cast<int>(std::min<int64_t>(64, limit - R_.random_applied)));
         R_.ms_random += ms_since(t);
     }
 
@@ -177,6 +179,46 @@ public:
         p.tests = tests;
         p.yield = det > 0 ? det / std::max(det_work, 1.0) : 0.0;
         return p;
+    }
+
+    // SAT fallback: every fault PODEM aborted on and nothing has detected since
+    // gets an exact answer, a test or a proof of redundancy. After this, no fault
+    // is left unresolved (unless a SAT call hits its conflict limit).
+    void resolve()
+    {
+        auto t = Clock::now();
+        std::vector<int> todo;
+        for (int f : fs_.pending())
+            if (abandoned_[f]) todo.push_back(f);
+        std::sort(todo.begin(), todo.end());
+        for (int f : todo) {
+            if (!fs_.is_pending(f)) continue;  // an earlier fallback vector detected it
+            uint64_t w0 = sat_.work();
+            SatAtpgResult r = sat_.run(fl_.faults[f], cfg_.sat_conflicts);
+            R_.work_sat += static_cast<double>(sat_.work() - w0);
+            ++R_.sat_calls;
+            if (r.status == PodemStatus::DETECTED) {
+                std::vector<uint8_t> v(r.pi.size());
+                for (size_t i = 0; i < v.size(); ++i)
+                    v[i] = r.pi[i] == LX ? static_cast<uint8_t>(rng_() & 1ULL) : r.pi[i];
+                fs_.simulate_vector(v);
+                if (!fs_.is_detected(f))
+                    throw std::logic_error("SAT vector does not detect its target fault: " +
+                                           fault_str(c_, fl_.faults[f]));
+                abandoned_[f] = 0;
+                tests_.push_back(std::move(v));
+                ++R_.sat_vectors;
+                ++patterns_;
+                R_.curve.push_back({patterns_, fs_.num_detected(), work_total(), ms_since(t0_), 'S'});
+            } else if (r.status == PodemStatus::REDUNDANT) {
+                fs_.retire(f);
+                abandoned_[f] = 0;
+                ++R_.redundant;
+                ++R_.sat_redundant;
+                R_.work_unresolved += abort_work_[f];  // proven redundant: the same for every flow
+            }
+        }
+        R_.ms_sat += ms_since(t);
     }
 
     // Plateau baseline: switch once the last `plateau_blocks` random blocks
@@ -254,14 +296,12 @@ public:
                     std::ostringstream o;
                     o << "stage 1  k=" << d.k << " over " << d.blocks
                       << " blocks (bound: 1 per block), p=" << d.p
-                      << (d.reject ? "  REJECT -> probe PODEM" : "");
+                      << (d.reject ? (cfg_.stage2 ? "  REJECT -> probe PODEM" : "  REJECT -> SWITCH")
+                                   : "");
                     log(o.str());
                 }
                 if (!(d.enough_evidence && d.reject)) continue;
-                if (!cfg_.stage2) {
-                    log("stage 2 disabled -> SWITCH");
-                    break;
-                }
+                if (!cfg_.stage2) break;
                 need_probe = true;
             }
             if (need_probe) {
@@ -332,7 +372,7 @@ public:
 
     RunResult finish()
     {
-        R_.ms_total = R_.ms_random + R_.ms_podem;
+        R_.ms_total = R_.ms_random + R_.ms_podem + R_.ms_sat;
         R_.detected = fs_.num_detected();
         R_.aborted = 0;
         for (int f : fs_.pending())
@@ -365,6 +405,7 @@ private:
     RunConfig cfg_;
     FaultSim fs_;
     Podem podem_;
+    SatAtpg sat_;
     std::mt19937_64 rng_;
     RunResult R_;
     Clock::time_point t0_;
@@ -402,6 +443,7 @@ RunResult run_atpg(const Circuit& c, const FaultList& fl, const Scoap& sc, const
     } else {
         throw std::runtime_error("unknown method: " + cfg.method);
     }
+    if (cfg.resolve && cfg.method != "random") s.resolve();
     return s.finish();
 }
 
@@ -410,7 +452,7 @@ std::string summary_header()
     return "circuit,method,param,seed,faults,detected,redundant,aborted,fc_pct,fe_pct,"
            "random_applied,random_kept,podem_vectors,podem_calls,probe_calls,tests,compacted,"
            "switch_at,work_random,work_podem,work_total,ms_random,ms_podem,ms_total,ms_compact,"
-           "work_unresolved,work_core";
+           "work_unresolved,work_core,sat_calls,sat_vectors,sat_redundant,work_sat";
 }
 
 std::string summary_row(const RunResult& r)
@@ -430,7 +472,8 @@ std::string summary_row(const RunResult& r)
     o.precision(3);
     o << r.ms_random << ',' << r.ms_podem << ',' << r.ms_total << ',' << r.ms_compact << ',';
     o.precision(0);
-    o << r.work_unresolved << ',' << r.work_core();
+    o << r.work_unresolved << ',' << r.work_core() << ',' << r.sat_calls << ',' << r.sat_vectors << ','
+      << r.sat_redundant << ',' << r.work_sat;
     return o.str();
 }
 
