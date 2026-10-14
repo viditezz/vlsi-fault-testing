@@ -1,0 +1,3 @@
+circuit,inputs,outputs,gates,depth,lines,faults_uncollapsed,faults_collapsed
+s13207,700,790,7951,59,13179,26358,9815
+s15850,611,684,9772,82,15847,31694,11725
