@@ -23,7 +23,12 @@ sweep: $(BIN)
 	./$(BIN) sweep benchmarks results
 	python3 scripts/plot_results.py results
 
+# ISCAS-89 (full scan), held out: none of the settings were tuned on these circuits
+sweep89: $(BIN)
+	./$(BIN) sweep benchmarks results_iscas89 --circuits s1423,s5378,s9234,s13207,s15850,s38417
+	python3 scripts/plot_results.py results_iscas89
+
 clean:
 	rm -rf build $(BIN)
 
-.PHONY: all test sweep clean
+.PHONY: all test sweep sweep89 clean

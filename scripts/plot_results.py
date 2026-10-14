@@ -52,7 +52,7 @@ LABEL = {
     "fixed-8192": "Fixed switch @8192",
     "plateau": "Plateau rule (6 blocks, ≤1)",
     "stage1": "Cost-bound test only (stage 1)",
-    "adaptive": "Adaptive, two-stage (proposed)",
+    "adaptive": "Adaptive, two-stage",
 }
 RULES = ["podem", "fixed-128", "fixed-1024", "fixed-8192", "plateau", "stage1", "adaptive"]
 TABLE_METHODS = ["random", "podem", "fixed-128", "fixed-1024", "fixed-8192", "plateau", "stage1", "adaptive"]
@@ -212,6 +212,8 @@ def plot_regret(g, circuits, out):
 
 def plot_cost_vs_switch(g, circuits, out):
     show = [c for c in ["c432", "c880", "c1908", "c2670", "c3540", "c5315", "c6288", "c7552"] if c in circuits]
+    if not show:  # any other benchmark set: every circuit that has a fixed-N sweep
+        show = [c for c in circuits if c != "c17" and fixed_methods(g, c)][:8]
     cols = 4
     rows = math.ceil(len(show) / cols)
     fig, axes = plt.subplots(rows, cols, figsize=(14, 3.3 * rows), facecolor=SURFACE)
@@ -285,6 +287,10 @@ def read_curve(path):
 
 def plot_curves(d, circuits, out, g):
     show = [c for c in ["c432", "c1908", "c2670", "c3540", "c5315", "c7552"] if c in circuits]
+    if not show:  # any other benchmark set: circuits that have curve files
+        show = [c for c in circuits if os.path.exists(os.path.join(d, "curves", f"{c}_adaptive.csv"))][:6]
+    if not show:
+        return
     cols = 3
     rows = math.ceil(len(show) / cols)
     fig, axes = plt.subplots(rows, cols, figsize=(13, 3.6 * rows), facecolor=SURFACE)
@@ -528,7 +534,7 @@ def write_table(d, g, circuits, info, out):
 
     L.append("\n## Test-set size (compacted tests, relative to PODEM only)\n")
     L.append("Reverse-order fault-simulation compaction applied to every method's test set. "
-             "The random-only set is larger and reaches lower coverage on c2670 and c7552.\n")
+             "Pure random reaches lower coverage than the hybrids wherever its detected count is lower (Coverage table).\n")
     test_sizes(L, g, circuits, ["random", "fixed-128", "fixed-1024", "fixed-8192", "plateau", "stage1", "adaptive"])
 
     sens = sensitivity(d, g, circuits)

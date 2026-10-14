@@ -1,0 +1,47 @@
+pattern 128: stage 1  k=6826 over 2 blocks (bound: 1 per block), p=1
+pattern 384: stage 1  k=485 over 4 blocks (bound: 1 per block), p=1
+pattern 768: stage 1  k=245 over 6 blocks (bound: 1 per block), p=1
+pattern 1152: stage 1  k=167 over 6 blocks (bound: 1 per block), p=1
+pattern 1536: stage 1  k=136 over 6 blocks (bound: 1 per block), p=1
+pattern 1920: stage 1  k=52 over 6 blocks (bound: 1 per block), p=1
+pattern 2304: stage 1  k=150 over 6 blocks (bound: 1 per block), p=1
+pattern 2688: stage 1  k=45 over 6 blocks (bound: 1 per block), p=1
+pattern 3072: stage 1  k=131 over 6 blocks (bound: 1 per block), p=1
+pattern 3456: stage 1  k=115 over 6 blocks (bound: 1 per block), p=1
+pattern 3840: stage 1  k=48 over 6 blocks (bound: 1 per block), p=1
+pattern 4288: stage 1  k=75 over 7 blocks (bound: 1 per block), p=1
+pattern 4672: stage 1  k=68 over 6 blocks (bound: 1 per block), p=1
+pattern 5056: stage 1  k=51 over 6 blocks (bound: 1 per block), p=1
+pattern 5440: stage 1  k=42 over 6 blocks (bound: 1 per block), p=1
+pattern 5824: stage 1  k=40 over 6 blocks (bound: 1 per block), p=1
+pattern 6208: stage 1  k=95 over 6 blocks (bound: 1 per block), p=1
+pattern 6592: stage 1  k=12 over 6 blocks (bound: 1 per block), p=0.990176
+pattern 7040: stage 1  k=10 over 7 blocks (bound: 1 per block), p=0.905386
+pattern 7488: stage 1  k=21 over 7 blocks (bound: 1 per block), p=0.999995
+pattern 7872: stage 1  k=18 over 6 blocks (bound: 1 per block), p=0.999979
+pattern 8320: stage 1  k=27 over 7 blocks (bound: 1 per block), p=1
+pattern 8704: stage 1  k=67 over 6 blocks (bound: 1 per block), p=1
+pattern 9088: stage 1  k=52 over 6 blocks (bound: 1 per block), p=1
+pattern 9536: stage 1  k=13 over 7 blocks (bound: 1 per block), p=0.985844
+pattern 9984: stage 1  k=16 over 7 blocks (bound: 1 per block), p=0.999078
+pattern 10432: stage 1  k=28 over 7 blocks (bound: 1 per block), p=1
+pattern 10880: stage 1  k=28 over 7 blocks (bound: 1 per block), p=1
+pattern 11264: stage 1  k=6 over 6 blocks (bound: 1 per block), p=0.582599
+pattern 11648: stage 1  k=21 over 6 blocks (bound: 1 per block), p=0.999999
+pattern 12096: stage 1  k=11 over 7 blocks (bound: 1 per block), p=0.941081
+pattern 12480: stage 1  k=4 over 6 blocks (bound: 1 per block), p=0.268916
+pattern 12864: stage 1  k=27 over 6 blocks (bound: 1 per block), p=1
+pattern 13248: stage 1  k=2 over 6 blocks (bound: 1 per block), p=0.0552413
+pattern 13632: stage 1  k=35 over 6 blocks (bound: 1 per block), p=1
+pattern 14016: stage 1  k=6 over 6 blocks (bound: 1 per block), p=0.579047
+pattern 14400: stage 1  k=11 over 6 blocks (bound: 1 per block), p=0.975115
+pattern 14784: stage 1  k=3 over 6 blocks (bound: 1 per block), p=0.14537
+pattern 15232: stage 1  k=6 over 7 blocks (bound: 1 per block), p=0.448191
+pattern 15680: stage 1  k=30 over 7 blocks (bound: 1 per block), p=1
+pattern 16064: stage 1  k=2 over 6 blocks (bound: 1 per block), p=0.0576997
+pattern 16512: stage 1  k=9 over 7 blocks (bound: 1 per block), p=0.848248
+pattern 16896: stage 1  k=5 over 6 blocks (bound: 1 per block), p=0.445283
+pattern 17280: stage 1  k=1 over 6 blocks (bound: 1 per block), p=0.0166338  REJECT -> probe PODEM
+pattern 17280: probe 16 PODEM calls, 8 tests -> yield 0.000506031 det/work, targetable 486
+pattern 17408: stage 2  k=0 over 2 blocks, break-even mu=9.2968, p=9.17176e-05  REJECT
+pattern 17536: stage 2  k=1 over 2 blocks, break-even mu=9.20318, p=0.00102765  REJECT  -> SWITCH

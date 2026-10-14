@@ -23,7 +23,7 @@ Every flow that ends with the SAT fallback (all but pure random) resolves every 
 
 ## Cost relative to the hindsight-best fixed switch — total work
 
-| circuit | PODEM only | Fixed switch @128 | Fixed switch @1024 | Fixed switch @8192 | Plateau rule (6 blocks, ≤1) | Cost-bound test only (stage 1) | Adaptive, two-stage (proposed) |
+| circuit | PODEM only | Fixed switch @128 | Fixed switch @1024 | Fixed switch @8192 | Plateau rule (6 blocks, ≤1) | Cost-bound test only (stage 1) | Adaptive, two-stage |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | c432 | 3.021 | 1.452 | 1.001 | 1.052 | 1.001 | 1.002 | 1.002 |
 | c499 | 1.137 | 1.014 | 1.000 | 1.020 | 1.000 | 1.001 | 1.001 |
@@ -47,7 +47,7 @@ Best fixed N per circuit: c432 768, c499 768, c880 1024, c1355 2048, c1908 3072,
 
 Switch-dependent work = total work minus PODEM work on faults that end the run proved redundant (by PODEM, or by the SAT fallback after PODEM aborted). That set is identical for every flow, and every flow pays for it wherever it switches.
 
-| circuit | PODEM only | Fixed switch @128 | Fixed switch @1024 | Fixed switch @8192 | Plateau rule (6 blocks, ≤1) | Cost-bound test only (stage 1) | Adaptive, two-stage (proposed) |
+| circuit | PODEM only | Fixed switch @128 | Fixed switch @1024 | Fixed switch @8192 | Plateau rule (6 blocks, ≤1) | Cost-bound test only (stage 1) | Adaptive, two-stage |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | c432 | 29.131 | 7.291 | 1.019 | 1.725 | 1.017 | 1.032 | 1.025 |
 | c499 | 8.865 | 1.801 | 1.020 | 2.132 | 1.021 | 1.052 | 1.052 |
@@ -74,10 +74,10 @@ Ratio < 1 means A needs less work. "Indistinguishable" means the 95% interval co
 | comparison (A ÷ B) | ratio of geomeans | 95% interval | verdict |
 |---|---:|---:|---|
 | Plateau rule (6 blocks, ≤1) ÷ Cost-bound test only (stage 1) | 0.999 | 0.995–1.003 | indistinguishable |
-| Cost-bound test only (stage 1) ÷ Adaptive, two-stage (proposed) | 1.000 | 0.997–1.002 | indistinguishable |
-| Plateau rule (6 blocks, ≤1) ÷ Adaptive, two-stage (proposed) | 0.998 | 0.994–1.004 | indistinguishable |
+| Cost-bound test only (stage 1) ÷ Adaptive, two-stage | 1.000 | 0.997–1.002 | indistinguishable |
+| Plateau rule (6 blocks, ≤1) ÷ Adaptive, two-stage | 0.998 | 0.994–1.004 | indistinguishable |
 | Plateau rule (6 blocks, ≤1) ÷ Fixed switch @1024 | 0.974 | 0.967–0.981 | A cheaper |
-| Adaptive, two-stage (proposed) ÷ Fixed switch @1024 | 0.975 | 0.968–0.982 | A cheaper |
+| Adaptive, two-stage ÷ Fixed switch @1024 | 0.975 | 0.968–0.982 | A cheaper |
 
 ## Pairwise differences between rules — switch-dependent work
 
@@ -86,10 +86,10 @@ Ratio < 1 means A needs less work. "Indistinguishable" means the 95% interval co
 | comparison (A ÷ B) | ratio of geomeans | 95% interval | verdict |
 |---|---:|---:|---|
 | Plateau rule (6 blocks, ≤1) ÷ Cost-bound test only (stage 1) | 1.001 | 0.984–1.027 | indistinguishable |
-| Cost-bound test only (stage 1) ÷ Adaptive, two-stage (proposed) | 0.993 | 0.975–1.015 | indistinguishable |
-| Plateau rule (6 blocks, ≤1) ÷ Adaptive, two-stage (proposed) | 0.994 | 0.968–1.029 | indistinguishable |
+| Cost-bound test only (stage 1) ÷ Adaptive, two-stage | 0.993 | 0.975–1.015 | indistinguishable |
+| Plateau rule (6 blocks, ≤1) ÷ Adaptive, two-stage | 0.994 | 0.968–1.029 | indistinguishable |
 | Plateau rule (6 blocks, ≤1) ÷ Fixed switch @1024 | 0.821 | 0.775–0.865 | A cheaper |
-| Adaptive, two-stage (proposed) ÷ Fixed switch @1024 | 0.825 | 0.780–0.871 | A cheaper |
+| Adaptive, two-stage ÷ Fixed switch @1024 | 0.825 | 0.780–0.871 | A cheaper |
 
 ## How costly is a switch that is off by 2x or 4x? (fixed N, switch-dependent work)
 
@@ -110,9 +110,9 @@ Cost relative to the best fixed N on the grid, for a fixed switch point 2 and 4 
 
 ## Test-set size (compacted tests, relative to PODEM only)
 
-Reverse-order fault-simulation compaction applied to every method's test set. The random-only set is larger and reaches lower coverage on c2670 and c7552.
+Reverse-order fault-simulation compaction applied to every method's test set. Pure random reaches lower coverage than the hybrids wherever its detected count is lower (Coverage table).
 
-| circuit | Pure random | Fixed switch @128 | Fixed switch @1024 | Fixed switch @8192 | Plateau rule (6 blocks, ≤1) | Cost-bound test only (stage 1) | Adaptive, two-stage (proposed) |
+| circuit | Pure random | Fixed switch @128 | Fixed switch @1024 | Fixed switch @8192 | Plateau rule (6 blocks, ≤1) | Cost-bound test only (stage 1) | Adaptive, two-stage |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | c432 | 0.998 | 0.962 | 0.997 | 0.998 | 0.990 | 0.998 | 0.995 |
 | c499 | 0.802 | 0.814 | 0.802 | 0.802 | 0.802 | 0.802 | 0.802 |
@@ -171,7 +171,7 @@ The defaults (window μ = 6, plateau 6/1, probe 16, ...) were chosen while looki
 
 Full sweeps with PODEM work multiplied by w (a slower or faster ATPG engine relative to fault simulation). Each weight has its own fixed-N oracle. Entries: geomean / worst circuit.
 
-| w | metric | PODEM only | Fixed switch @1024 | Plateau rule (6 blocks, ≤1) | Cost-bound test only (stage 1) | Adaptive, two-stage (proposed) |
+| w | metric | PODEM only | Fixed switch @1024 | Plateau rule (6 blocks, ≤1) | Cost-bound test only (stage 1) | Adaptive, two-stage |
 |---|---|---:|---:|---:|---:|---:|
 | 1 | total work | 1.573 / 3.66 | 1.029 / 1.13 | 1.002 / 1.01 | 1.004 / 1.02 | 1.004 / 1.02 |
 | 1 | switch-dependent work | 5.160 / 29.13 | 1.259 / 1.88 | 1.031 / 1.23 | 1.028 / 1.23 | 1.035 / 1.13 |
@@ -186,7 +186,7 @@ Full sweeps with PODEM work multiplied by w (a slower or faster ATPG engine rela
 
 Full sweeps (5 seeds) with the PODEM backtrack limit lowered; 1024 is the default (10 seeds). Left block: how the rules rank against their own fixed-N oracle (total work, geomean / worst circuit). Right block: totals over all circuits for the adaptive method. SAT propagation steps are a different unit from gate evaluations and are not included in total work.
 
-| PODEM backtrack limit | PODEM only | Fixed switch @1024 | Plateau rule (6 blocks, ≤1) | Cost-bound test only (stage 1) | Adaptive, two-stage (proposed) | adaptive: PODEM aborts → SAT | adaptive: total work (M) | adaptive: SAT propagations (M) |
+| PODEM backtrack limit | PODEM only | Fixed switch @1024 | Plateau rule (6 blocks, ≤1) | Cost-bound test only (stage 1) | Adaptive, two-stage | adaptive: PODEM aborts → SAT | adaptive: total work (M) | adaptive: SAT propagations (M) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | 32 | 2.733 / 5.92 | 1.061 / 1.30 | 1.007 / 1.02 | 1.014 / 1.05 | 1.026 / 1.11 | 297 | 10.5 | 2.76 |
 | 128 | 2.066 / 4.07 | 1.056 / 1.25 | 1.004 / 1.01 | 1.010 / 1.05 | 1.018 / 1.07 | 263 | 20.7 | 2.40 |
@@ -226,7 +226,7 @@ Wall-clock times are single runs of millisecond-scale jobs and vary by tens of p
 | Fixed switch @8192 | 22.0 | 0.0 | 0.0 | 100.000 | 100.000 | 5.9 ± 1.1 | 64 | 0 | 0.000 | 0.000 | 0.0 |
 | Plateau rule (6 blocks, ≤1) | 22.0 | 0.0 | 0.0 | 100.000 | 100.000 | 5.9 ± 1.1 | 64 | 0 | 0.000 | 0.000 | 0.0 |
 | Cost-bound test only (stage 1) | 22.0 | 0.0 | 0.0 | 100.000 | 100.000 | 5.9 ± 1.1 | 64 | 0 | 0.000 | 0.000 | 0.0 |
-| Adaptive, two-stage (proposed) | 22.0 | 0.0 | 0.0 | 100.000 | 100.000 | 5.9 ± 1.1 | 64 | 0 | 0.000 | 0.000 | 0.0 |
+| Adaptive, two-stage | 22.0 | 0.0 | 0.0 | 100.000 | 100.000 | 5.9 ± 1.1 | 64 | 0 | 0.000 | 0.000 | 0.0 |
 
 ### c432 — 36 PI, 7 PO, 160 gates, 524 collapsed faults (864 uncollapsed)
 
@@ -239,7 +239,7 @@ Wall-clock times are single runs of millisecond-scale jobs and vary by tens of p
 | Fixed switch @8192 | 520.0 | 4.0 | 0.0 | 99.237 | 100.000 | 57.9 ± 3.8 | 8192 | 4 | 0.376 | 0.044 | 9.2 ± 0.2 |
 | Plateau rule (6 blocks, ≤1) | 520.0 | 4.0 | 0.0 | 99.237 | 100.000 | 57.4 ± 3.7 | 1005 ± 157 | 5 ± 1 | 0.358 ± 0.001 | 0.026 ± 0.001 | 12.1 ± 0.3 |
 | Cost-bound test only (stage 1) | 520.0 | 4.0 | 0.0 | 99.237 | 100.000 | 57.9 ± 3.8 | 1248 ± 304 | 4 ± 1 | 0.358 ± 0.001 | 0.027 ± 0.001 | 11.7 ± 1.0 |
-| Adaptive, two-stage (proposed) | 520.0 | 4.0 | 0.0 | 99.237 | 100.000 | 57.7 ± 3.8 | 1248 ± 304 | 4 | 0.358 ± 0.001 | 0.026 ± 0.001 | 12.4 ± 0.2 |
+| Adaptive, two-stage | 520.0 | 4.0 | 0.0 | 99.237 | 100.000 | 57.7 ± 3.8 | 1248 ± 304 | 4 | 0.358 ± 0.001 | 0.026 ± 0.001 | 12.4 ± 0.2 |
 
 ### c499 — 41 PI, 32 PO, 202 gates, 758 collapsed faults (998 uncollapsed)
 
@@ -252,7 +252,7 @@ Wall-clock times are single runs of millisecond-scale jobs and vary by tens of p
 | Fixed switch @8192 | 750.0 | 8.0 | 0.0 | 98.945 | 100.000 | 54.3 ± 0.9 | 8192 | 8 | 1.617 ± 0.001 | 0.059 ± 0.001 | 29.4 ± 6.5 |
 | Plateau rule (6 blocks, ≤1) | 750.0 | 8.0 | 0.0 | 98.945 | 100.000 | 54.3 ± 0.9 | 1030 ± 115 | 8 ± 1 | 1.586 ± 0.001 | 0.028 ± 0.001 | 25.9 ± 0.9 |
 | Cost-bound test only (stage 1) | 750.0 | 8.0 | 0.0 | 98.945 | 100.000 | 54.3 ± 0.9 | 1229 ± 124 | 8 ± 1 | 1.587 ± 0.001 | 0.029 ± 0.001 | 26.2 ± 1.4 |
-| Adaptive, two-stage (proposed) | 750.0 | 8.0 | 0.0 | 98.945 | 100.000 | 54.3 ± 0.9 | 1229 ± 124 | 8 ± 1 | 1.587 ± 0.001 | 0.029 ± 0.001 | 25.4 ± 1.5 |
+| Adaptive, two-stage | 750.0 | 8.0 | 0.0 | 98.945 | 100.000 | 54.3 ± 0.9 | 1229 ± 124 | 8 ± 1 | 1.587 ± 0.001 | 0.029 ± 0.001 | 25.4 ± 1.5 |
 
 ### c880 — 60 PI, 26 PO, 383 gates, 942 collapsed faults (1760 uncollapsed)
 
@@ -265,7 +265,7 @@ Wall-clock times are single runs of millisecond-scale jobs and vary by tens of p
 | Fixed switch @8192 | 942.0 | 0.0 | 0.0 | 100.000 | 100.000 | 65.7 ± 2.1 | 7520 ± 1016 | 1 ± 1 | 0.075 ± 0.007 | 0.075 ± 0.007 | 1.0 |
 | Plateau rule (6 blocks, ≤1) | 942.0 | 0.0 | 0.0 | 100.000 | 100.000 | 65.4 ± 3.8 | 1600 ± 615 | 7 ± 3 | 0.049 ± 0.003 | 0.049 ± 0.003 | 1.2 ± 0.2 |
 | Cost-bound test only (stage 1) | 942.0 | 0.0 | 0.0 | 100.000 | 100.000 | 65.3 ± 3.6 | 1882 ± 709 | 7 ± 3 | 0.050 ± 0.004 | 0.050 ± 0.004 | 1.2 ± 0.1 |
-| Adaptive, two-stage (proposed) | 942.0 | 0.0 | 0.0 | 100.000 | 100.000 | 64.9 ± 3.1 | 1882 ± 709 | 6 ± 3 | 0.049 ± 0.004 | 0.049 ± 0.004 | 1.2 ± 0.2 |
+| Adaptive, two-stage | 942.0 | 0.0 | 0.0 | 100.000 | 100.000 | 64.9 ± 3.1 | 1882 ± 709 | 6 ± 3 | 0.049 ± 0.004 | 0.049 ± 0.004 | 1.2 ± 0.2 |
 
 ### c1355 — 41 PI, 32 PO, 546 gates, 1574 collapsed faults (2710 uncollapsed)
 
@@ -278,7 +278,7 @@ Wall-clock times are single runs of millisecond-scale jobs and vary by tens of p
 | Fixed switch @8192 | 1566.0 | 8.0 | 0.0 | 99.492 | 100.000 | 86.5 ± 1.0 | 8192 | 8 | 3.105 ± 0.002 | 0.156 ± 0.002 | 41.5 ± 0.2 |
 | Plateau rule (6 blocks, ≤1) | 1566.0 | 8.0 | 0.0 | 99.492 | 100.000 | 86.5 ± 1.0 | 2080 ± 272 | 9 ± 1 | 3.054 ± 0.022 | 0.106 ± 0.022 | 43.1 ± 1.3 |
 | Cost-bound test only (stage 1) | 1566.0 | 8.0 | 0.0 | 99.492 | 100.000 | 86.5 ± 1.0 | 2298 ± 394 | 9 ± 1 | 3.049 ± 0.004 | 0.101 ± 0.004 | 46.4 ± 6.6 |
-| Adaptive, two-stage (proposed) | 1566.0 | 8.0 | 0.0 | 99.492 | 100.000 | 86.5 ± 1.0 | 2298 ± 394 | 9 ± 1 | 3.049 ± 0.004 | 0.101 ± 0.004 | 44.1 ± 2.3 |
+| Adaptive, two-stage | 1566.0 | 8.0 | 0.0 | 99.492 | 100.000 | 86.5 ± 1.0 | 2298 ± 394 | 9 ± 1 | 3.049 ± 0.004 | 0.101 ± 0.004 | 44.1 ± 2.3 |
 
 ### c1908 — 33 PI, 25 PO, 880 gates, 1879 collapsed faults (3816 uncollapsed)
 
@@ -291,7 +291,7 @@ Wall-clock times are single runs of millisecond-scale jobs and vary by tens of p
 | Fixed switch @8192 | 1870.0 | 9.0 | 0.0 | 99.521 | 100.000 | 125.8 ± 4.2 | 8192 | 10 ± 1 | 0.919 ± 0.007 | 0.247 ± 0.007 | 21.8 ± 3.9 |
 | Plateau rule (6 blocks, ≤1) | 1870.0 | 9.0 | 0.0 | 99.521 | 100.000 | 125.7 ± 4.2 | 2893 ± 398 | 18 ± 3 | 0.877 ± 0.023 | 0.205 ± 0.023 | 20.7 ± 1.1 |
 | Cost-bound test only (stage 1) | 1870.0 | 9.0 | 0.0 | 99.521 | 100.000 | 125.7 ± 4.2 | 3149 ± 534 | 17 ± 4 | 0.878 ± 0.023 | 0.206 ± 0.023 | 20.6 ± 0.8 |
-| Adaptive, two-stage (proposed) | 1870.0 | 9.0 | 0.0 | 99.521 | 100.000 | 125.7 ± 4.2 | 3507 ± 1008 | 16 ± 3 | 0.879 ± 0.033 | 0.207 ± 0.033 | 21.5 ± 3.5 |
+| Adaptive, two-stage | 1870.0 | 9.0 | 0.0 | 99.521 | 100.000 | 125.7 ± 4.2 | 3507 ± 1008 | 16 ± 3 | 0.879 ± 0.033 | 0.207 ± 0.033 | 21.5 ± 3.5 |
 
 ### c2670 — 233 PI, 140 PO, 1269 gates, 2747 collapsed faults (5492 uncollapsed)
 
@@ -304,7 +304,7 @@ Wall-clock times are single runs of millisecond-scale jobs and vary by tens of p
 | Fixed switch @8192 | 2630.0 | 117.0 | 0.0 | 95.741 | 100.000 | 118.6 ± 3.0 | 8192 | 191 ± 2 | 14.918 ± 0.010 | 0.958 ± 0.010 | 354.1 ± 17.5 |
 | Plateau rule (6 blocks, ≤1) | 2630.0 | 117.0 | 0.0 | 95.741 | 100.000 | 117.1 ± 3.2 | 1459 ± 325 | 192 ± 2 | 14.480 ± 0.026 | 0.520 ± 0.026 | 341.3 ± 12.0 |
 | Cost-bound test only (stage 1) | 2630.0 | 117.0 | 0.0 | 95.741 | 100.000 | 116.9 ± 3.8 | 1568 ± 338 | 192 ± 2 | 14.485 ± 0.032 | 0.525 ± 0.032 | 341.5 ± 17.6 |
-| Adaptive, two-stage (proposed) | 2630.0 | 117.0 | 0.0 | 95.741 | 100.000 | 117.2 ± 3.5 | 1696 ± 338 | 192 ± 1 | 14.482 ± 0.031 | 0.522 ± 0.031 | 357.4 ± 36.9 |
+| Adaptive, two-stage | 2630.0 | 117.0 | 0.0 | 95.741 | 100.000 | 117.2 ± 3.5 | 1696 ± 338 | 192 ± 1 | 14.482 ± 0.031 | 0.522 ± 0.031 | 357.4 ± 36.9 |
 
 ### c3540 — 50 PI, 22 PO, 1669 gates, 3428 collapsed faults (7080 uncollapsed)
 
@@ -317,7 +317,7 @@ Wall-clock times are single runs of millisecond-scale jobs and vary by tens of p
 | Fixed switch @8192 | 3291.0 | 137.0 | 0.0 | 96.004 | 100.000 | 180.8 ± 3.1 | 8192 | 140 ± 1 | 26.761 ± 0.256 | 0.875 ± 0.256 | 778.6 ± 26.0 |
 | Plateau rule (6 blocks, ≤1) | 3291.0 | 137.0 | 0.0 | 96.004 | 100.000 | 180.9 ± 2.8 | 2707 ± 293 | 148 ± 3 | 26.888 ± 0.375 | 1.002 ± 0.375 | 758.3 ± 34.7 |
 | Cost-bound test only (stage 1) | 3291.0 | 137.0 | 0.0 | 96.004 | 100.000 | 180.8 ± 3.1 | 2931 ± 515 | 147 ± 4 | 26.892 ± 0.371 | 1.006 ± 0.371 | 739.4 ± 31.6 |
-| Adaptive, two-stage (proposed) | 3291.0 | 137.0 | 0.0 | 96.004 | 100.000 | 181.0 ± 2.6 | 6214 ± 2633 | 144 ± 4 | 26.814 ± 0.334 | 0.928 ± 0.334 | 747.7 ± 28.4 |
+| Adaptive, two-stage | 3291.0 | 137.0 | 0.0 | 96.004 | 100.000 | 181.0 ± 2.6 | 6214 ± 2633 | 144 ± 4 | 26.814 ± 0.334 | 0.928 ± 0.334 | 747.7 ± 28.4 |
 
 ### c5315 — 178 PI, 123 PO, 2307 gates, 5350 collapsed faults (10630 uncollapsed)
 
@@ -330,7 +330,7 @@ Wall-clock times are single runs of millisecond-scale jobs and vary by tens of p
 | Fixed switch @8192 | 5291.0 | 59.0 | 0.0 | 98.897 | 100.000 | 142.9 ± 5.3 | 8192 | 59 | 2.269 ± 0.001 | 0.514 ± 0.001 | 56.8 ± 3.5 |
 | Plateau rule (6 blocks, ≤1) | 5291.0 | 59.0 | 0.0 | 98.897 | 100.000 | 141.3 ± 5.0 | 2054 ± 255 | 61 ± 2 | 2.086 ± 0.109 | 0.331 ± 0.109 | 61.8 ± 5.5 |
 | Cost-bound test only (stage 1) | 5291.0 | 59.0 | 0.0 | 98.897 | 100.000 | 142.2 ± 5.9 | 2413 ± 165 | 60 ± 1 | 2.059 ± 0.009 | 0.304 ± 0.009 | 59.3 ± 3.5 |
-| Adaptive, two-stage (proposed) | 5291.0 | 59.0 | 0.0 | 98.897 | 100.000 | 142.3 ± 5.4 | 4141 ± 917 | 60 ± 1 | 2.123 ± 0.031 | 0.367 ± 0.031 | 57.2 ± 4.0 |
+| Adaptive, two-stage | 5291.0 | 59.0 | 0.0 | 98.897 | 100.000 | 142.3 ± 5.4 | 4141 ± 917 | 60 ± 1 | 2.123 ± 0.031 | 0.367 ± 0.031 | 57.2 ± 4.0 |
 
 ### c6288 — 32 PI, 32 PO, 2416 gates, 7744 collapsed faults (12576 uncollapsed)
 
@@ -343,7 +343,7 @@ Wall-clock times are single runs of millisecond-scale jobs and vary by tens of p
 | Fixed switch @8192 | 7710.0 | 34.0 | 0.0 | 99.561 | 100.000 | 39.3 ± 3.0 | 8192 | 34 | 3.603 ± 0.024 | 1.918 ± 0.024 | 85.4 ± 1.4 |
 | Plateau rule (6 blocks, ≤1) | 7710.0 | 34.0 | 0.0 | 99.561 | 100.000 | 39.3 ± 3.0 | 538 ± 33 | 34 | 3.310 ± 0.024 | 1.625 ± 0.024 | 87.2 ± 2.8 |
 | Cost-bound test only (stage 1) | 7710.0 | 34.0 | 0.0 | 99.561 | 100.000 | 39.3 ± 3.0 | 550 ± 176 | 34 | 3.310 ± 0.026 | 1.625 ± 0.026 | 88.1 ± 2.9 |
-| Adaptive, two-stage (proposed) | 7710.0 | 34.0 | 0.0 | 99.561 | 100.000 | 39.3 ± 3.0 | 550 ± 176 | 34 | 3.310 ± 0.026 | 1.625 ± 0.026 | 88.8 ± 5.1 |
+| Adaptive, two-stage | 7710.0 | 34.0 | 0.0 | 99.561 | 100.000 | 39.3 ± 3.0 | 550 ± 176 | 34 | 3.310 ± 0.026 | 1.625 ± 0.026 | 88.8 ± 5.1 |
 
 ### c7552 — 207 PI, 108 PO, 3513 gates, 7550 collapsed faults (15106 uncollapsed)
 
@@ -356,4 +356,4 @@ Wall-clock times are single runs of millisecond-scale jobs and vary by tens of p
 | Fixed switch @8192 | 7419.0 | 131.0 | 0.0 | 98.265 | 100.000 | 232.7 ± 5.3 | 8192 | 240 ± 4 | 24.118 ± 0.178 | 3.425 ± 0.178 | 595.6 ± 28.4 |
 | Plateau rule (6 blocks, ≤1) | 7419.0 | 131.0 | 0.0 | 98.265 | 100.000 | 238.5 ± 4.9 | 3053 ± 819 | 256 ± 7 | 23.845 ± 0.141 | 3.152 ± 0.141 | 584.3 ± 12.7 |
 | Cost-bound test only (stage 1) | 7419.0 | 131.0 | 0.0 | 98.265 | 100.000 | 233.7 ± 8.0 | 3763 ± 1783 | 253 ± 9 | 23.929 ± 0.119 | 3.236 ± 0.119 | 596.2 ± 27.2 |
-| Adaptive, two-stage (proposed) | 7419.0 | 131.0 | 0.0 | 98.265 | 100.000 | 231.9 ± 6.6 | 4058 ± 1799 | 250 ± 8 | 23.882 ± 0.231 | 3.189 ± 0.231 | 577.1 ± 19.6 |
+| Adaptive, two-stage | 7419.0 | 131.0 | 0.0 | 98.265 | 100.000 | 231.9 ± 6.6 | 4058 ± 1799 | 250 ± 8 | 23.882 ± 0.231 | 3.189 ± 0.231 | 577.1 ± 19.6 |

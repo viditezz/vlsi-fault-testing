@@ -12,9 +12,20 @@ first and hand the rest to ATPG. *When* to switch is usually a fixed pattern
 count chosen in advance, and the best count differs from circuit to circuit.
 
 This project decides the switch point **online**, from the circuit's own coverage
-trajectory, and measures how much the decision rule matters.
+trajectory, and measures how much the decision rule matters, first on ISCAS-85
+(where the settings were chosen) and then on six held-out ISCAS-89 circuits.
 
 ## Findings
+
+**In one paragraph.** A simple online rule (switch when 6 blocks of 64 random
+patterns find at most 1 new fault) lands within about 3% of the best fixed
+switch point chosen in hindsight, on ISCAS-85 and on held-out ISCAS-89 circuits
+alike, with every fault resolved. A fixed pattern count that is good on one
+benchmark set is poor on the other. Our two-stage rule, which probes PODEM's
+yield before switching, ties on ISCAS-85 but is measurably worse on ISCAS-89
+because it switches late, so we do not recommend it over the plain plateau rule.
+
+### ISCAS-85 (settings chosen here)
 
 All 11 ISCAS-85 circuits, 10 seeds each. Every flow uses the same collapsed fault
 list, fault simulator, PODEM engine and SAT fallback, so differences come only
@@ -44,7 +55,7 @@ hindsight. Intervals are 95% bootstrap intervals over seeds.
    | fixed switch @8192 | 1.082 | 1.074–1.092 | 1.453 | 1.442–1.493 |
    | plateau rule (6 blocks, ≤1 fault) | 1.002 | 1.000–1.008 | 1.031 | 1.015–1.073 |
    | cost-bound test (stage 1) | 1.004 | 1.002–1.008 | 1.028 | 1.014–1.066 |
-   | adaptive, two-stage (proposed) | 1.004 | 1.002–1.009 | 1.035 | 1.021–1.070 |
+   | adaptive, two-stage | 1.004 | 1.002–1.009 | 1.035 | 1.021–1.070 |
 
    Geometric means over the 10 circuits. Pairwise differences between the three
    rules have intervals that include 1 on both measures (for example plateau ÷
@@ -52,7 +63,8 @@ hindsight. Intervals are 95% bootstrap intervals over seeds.
    switch-dependent work). Against the best common fixed choice (@1024) they use
    2.5% less total work and about 18% less switch-dependent work (intervals
    0.967–0.982 and 0.775–0.871).
-3. **The proposed second stage adds nothing on ISCAS-85.** The two-stage method
+3. **The second stage (the Review-I proposal) adds nothing on ISCAS-85**, and on
+   ISCAS-89 it costs more (next section). The two-stage method
    measures PODEM's actual yield with a probe before switching. The cost-bound
    test alone, which skips the probe, does as well, and the plateau heuristic
    (switch when 6 blocks of 64 patterns find at most 1 new fault) does as well
@@ -77,6 +89,57 @@ hindsight. Intervals are 95% bootstrap intervals over seeds.
    circuits (0.05–0.87× the oracle) and dearer on c880 (2.0×); on
    switch-dependent work it is never cheaper (1.1–6.0×). If redundancy proofs are
    not needed, long random runs are a reasonable choice on most of these circuits.
+
+### ISCAS-89, held out (full scan)
+
+Six ISCAS-89 circuits, run after every setting was fixed: s1423, s5378, s9234,
+s13207, s15850, s38417 (1,515 to 31,180 collapsed faults; flip-flops read as
+full scan). Same 19-point grid, 10 seeds, same code and defaults. Results are in
+`results_iscas89/`; reproduce with `make sweep89`.
+
+1. **Every fault is resolved again.** FE = 100% on every circuit, seed and
+   method except pure random. Proved-redundant counts: 14 / 40 / 452 / 151 / 389 / 165.
+   On s9234, PODEM aborts on 210 faults and the SAT fallback proves all 210
+   redundant; on s38417 it turns about 55 aborts per run into about 3 tests and 52 proofs.
+2. **The plateau rule and the stage-1 test transfer unchanged.**
+
+   | method | total work ÷ oracle | 95% interval | switch-dependent work ÷ oracle | 95% interval |
+   |---|---:|---:|---:|---:|
+   | PODEM only | 1.356 | 1.352–1.360 | 2.193 | 2.171–2.219 |
+   | fixed switch @128 | 1.282 | 1.278–1.288 | 1.869 | 1.838–1.902 |
+   | fixed switch @1024 | 1.139 | 1.136–1.143 | 1.335 | 1.318–1.355 |
+   | fixed switch @8192 | 1.023 | 1.020–1.026 | 1.108 | 1.095–1.122 |
+   | plateau rule (6 blocks, ≤1 fault) | 1.003 | 1.001–1.007 | 1.029 | 1.018–1.044 |
+   | cost-bound test (stage 1) | 1.002 | 1.000–1.005 | 1.028 | 1.017–1.043 |
+   | adaptive, two-stage | 1.015 | 1.011–1.019 | 1.104 | 1.076–1.133 |
+
+   Geometric means over the 6 circuits. Plateau and stage 1 are
+   indistinguishable (plateau ÷ stage 1: 1.001, 0.992–1.009 on switch-dependent
+   work), and match their ISCAS-85 numbers.
+3. **The two-stage rule is worse here.** Plateau ÷ two-stage is 0.933
+   (0.906–0.960) on switch-dependent work and 0.989 (0.984–0.993) on total work:
+   the difference is small but its interval excludes 1. The probe makes the rule
+   keep random patterns running after they have stalled. On s1423 the best N is
+   2,048 and two-stage switches at 6,931 on average (1.50× the oracle, 2.3× on the
+   worst seed); on s5378, 8,691 against 4,096 (1.10×). Plateau switches at
+   0.7–2.7× the best N on these circuits.
+4. **A fixed count does not transfer; online rules do.** The best N is 2,048 to
+   16,384 here (192 to 4,096 on ISCAS-85). Fixed @1024, nearly as good as the rules
+   on ISCAS-85 (1.029× total), costs 1.139× total and 1.335× switch-dependent on
+   ISCAS-89. Fixed @8192 goes the other way (1.082× on ISCAS-85, 1.023× here). No
+   single N is good on both sets; the online rules are.
+5. **Early switching still costs more than late, but less sharply.** N/4 costs up
+   to 1.58× and 4N up to 1.44× in switch-dependent work.
+
+Across all 16 circuits together, switch-dependent work ÷ oracle is 1.030
+(1.019–1.056) for plateau, 1.028 (1.019–1.053) for stage 1 and 1.060
+(1.048–1.086) for two-stage.
+
+![ISCAS-89 cost relative to the oracle](results_iscas89/plots/regret.png)
+
+![ISCAS-89 cost vs switch point](results_iscas89/plots/cost_vs_switch.png)
+
+### ISCAS-85 plots
 
 ![Cost relative to the hindsight-best fixed switch](results/plots/regret.png)
 
@@ -266,8 +329,9 @@ pass and statically compacted by reverse-order fault simulation.
 ### Sequential circuits
 `q = DFF(d)` is read as full scan: q becomes a pseudo primary input and d a
 pseudo primary output (`src/circuit.cpp`). ISCAS-89 `s27` is included and
-checked (7 PIs, 4 POs, 10 gates, 32 collapsed faults, all resolved). No larger
-ISCAS-89 circuits are bundled; see Limitations.
+checked (7 PIs, 4 POs, 10 gates, 32 collapsed faults, all resolved). Six larger
+ISCAS-89 circuits (s1423 to s38417, from the TTU benchmark archive) are bundled
+and used as the held-out set above.
 
 ## Verification
 
@@ -307,26 +371,28 @@ ISCAS-89 circuits are bundled; see Limitations.
 Beyond the self-tests: every sweep run re-simulates its final test set with a
 fresh fault simulator, and `scripts/check_tests.py` re-simulates the committed
 adaptive test sets with an independent Python simulator (own parser,
-levelization and gate evaluation). It matches the tool's detected count on all
-11 circuits and checks that detected + proved redundant = collapsed faults. It
-verifies coverage, not completeness; completeness (that the undetected faults
-are really redundant) rests on the SAT fallback and group 7–8 above.
+levelization and gate evaluation; flip-flops read as full scan). It matches the
+tool's detected count on all 11 ISCAS-85 and all 6 ISCAS-89 circuits and checks
+that detected + proved redundant = collapsed faults. It verifies coverage, not
+completeness; completeness (that the undetected faults are really redundant)
+rests on the SAT fallback and group 7–8 above.
 Re-running the sweep reproduces `results/summary.csv` exactly, apart from the
-timing columns.
+timing columns. The ISCAS-89 sweep was run on two machines and every
+deterministic column of `results_iscas89/summary.csv` matched.
 
 ## Limitations
 
 - **ISCAS-85 is easy for random patterns**, and the optimum is wide on the late
-  side, so the benchmark cannot separate good switching rules from each other.
-  Circuits with many random-pattern-resistant faults (ISCAS-89 full-scan, ITC'99)
-  are the natural next test, and the one place where the second stage might
-  earn its cost. The parser reads them (full scan) and the sweep takes any
-  `.bench` file in `benchmarks/` via `--circuits`, but the larger ISCAS-89
-  circuits are not bundled and have not been run.
-- **The tuned settings were chosen on the evaluation circuits** (held-out
-  check above: no sign they matter).
-- **Intervals cover seed noise only.** The 10 circuits are one fixed set, so the
-  intervals say nothing about how the rules would rank on other circuits.
+  side, so it cannot separate good switching rules from each other. ISCAS-89
+  (full scan) was expected to be where the second stage earns its cost; it was
+  not. ITC'99 and industrial circuits with more random-pattern-resistant faults
+  have not been run.
+- **Settings were chosen on ISCAS-85.** ISCAS-89 is the held-out check; six
+  circuits is still a small set.
+- **Intervals cover seed noise only.** Each benchmark set is one fixed set of
+  circuits, so the intervals do not say how the rules would rank on other circuits.
+- **Full scan only.** Flip-flops become pseudo inputs and outputs; sequential
+  (non-scan) test generation is out of scope.
 - **PODEM is basic.** No static learning, dominators or unique sensitization.
   Its redundancy proofs on c2670, c3540 and c7552 mostly abort, which is why the
   SAT fallback exists, and that work dominates total work (the budget
@@ -348,12 +414,14 @@ Requires a C++17 compiler; plotting needs Python 3 + matplotlib + numpy.
 ```bash
 make                        # builds ./faultatpg
 make test                   # 901 verification checks (~40 s)
-make sweep                  # all circuits x all methods x 10 seeds, then plots (~30 min)
+make sweep                  # ISCAS-85: all methods x 10 seeds, then plots (~30 min)
+make sweep89                # ISCAS-89 held-out set into results_iscas89/ (~20 min)
 scripts/sensitivity.sh      # each rule with one setting changed (~15 min on 2 cores)
 scripts/cost_weight.sh      # sweeps with PODEM 0.25x / 4x / 16x as expensive
 scripts/ablation_bt.sh      # sweeps with PODEM backtrack limit 32 / 128
 python3 scripts/plot_results.py results
 python3 scripts/check_tests.py ./faultatpg results c432 c880   # independent re-simulation
+python3 scripts/check_tests.py ./faultatpg results_iscas89 s1423 s5378 s9234 s13207 s15850 s38417
 ```
 
 ```bash
@@ -390,7 +458,8 @@ vlsi-fault-testing/
 │   ├── atpg_flow.*   random / podem / fixed / plateau / stage1 / adaptive flows, compaction
 │   ├── selftest.cpp  verification suite
 │   └── main.cpp      command-line driver
-├── benchmarks/       all 11 ISCAS-85 circuits and ISCAS-89 s27, in .bench format
+├── benchmarks/       all 11 ISCAS-85 circuits; ISCAS-89 s27, s1423, s5378, s9234,
+│                     s13207, s15850, s38417; all in .bench format
 ├── scripts/
 │   ├── verilog2bench.py   ISCAS-85 gate-level Verilog -> .bench
 │   ├── plot_results.py    plots + summary tables + bootstrap intervals from a sweep
@@ -399,7 +468,8 @@ vlsi-fault-testing/
 │   ├── cost_weight.sh     sweeps with PODEM cost scaled
 │   └── ablation_bt.sh     sweeps with a smaller PODEM budget
 ├── results/          summary.csv, summary_table.md, plots/, curves/, decisions/, tests/,
-│                     sensitivity/, weight/, bt/
+│                     sensitivity/, weight/, bt/  (ISCAS-85)
+├── results_iscas89/  the same for the held-out ISCAS-89 sweep
 ├── paper/            literature review papers
 ├── links.txt         reference links
 └── Makefile
