@@ -34,7 +34,7 @@ sweep99: $(BIN)
 
 # SAT cost, oracle per cost measure, circuit-level intervals, and sensitivity to the SAT weight c
 costs:
-	python3 scripts/cost_breakdown.py results results_iscas89 results_itc99
+	for d in results results_iscas89 results_itc99; do python3 scripts/cost_breakdown.py $$d; done
 	python3 scripts/c_sensitivity.py results results_iscas89 results_itc99
 
 clean:
