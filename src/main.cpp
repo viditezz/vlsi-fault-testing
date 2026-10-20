@@ -68,6 +68,7 @@ void usage()
         "  --curve FILE       write the coverage-vs-work curve\n"
         "  --tests FILE       write the compacted test set\n"
         "sweep options: --seeds N  --circuits a,b,...  --methods m1,m2,...  --grid fine|coarse\n"
+        "               --switches n1,n2,... (fixed points to run instead of the grid; raise --budget above 32768)\n"
         "               --quiet 1 (summary.csv only), plus every run option except\n"
         "               --method, --seed, --curve and --tests\n";
 }
@@ -282,6 +283,15 @@ int cmd_sweep(const std::string& dir, const std::string& out,
             if (n * 3 / 2 <= 32768 && n < 32768) grid.push_back(n * 3 / 2);
         }
     }
+    if (o.count("switches")) {  // explicit list of fixed switch points, e.g. to extend the grid
+        grid.clear();
+        std::stringstream ss(o.at("switches"));
+        std::string v;
+        while (std::getline(ss, v, ',')) {
+            int64_t n = number<int64_t>("switches", v, 64, base.random_budget);
+            grid.push_back(n);
+        }
+    }
     std::string want = o.count("methods") ? o.at("methods") : "random,podem,fixed,plateau,stage1,adaptive";
     {
         std::stringstream ss(want);
@@ -411,7 +421,7 @@ int main(int argc, char** argv)
         if (cmd == "sweep") {
             if (argc < 4) { usage(); return 1; }
             std::set<std::string> allowed = kConfigKeys;
-            allowed.insert({"seeds", "circuits", "methods", "grid", "quiet"});
+            allowed.insert({"seeds", "circuits", "methods", "grid", "quiet", "switches"});
             return cmd_sweep(argv[2], argv[3], parse_opts(argc, argv, 4, allowed));
         }
         usage();

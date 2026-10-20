@@ -13,17 +13,24 @@ count chosen in advance, and the best count differs from circuit to circuit.
 
 This project decides the switch point **online**, from the circuit's own coverage
 trajectory, and measures how much the decision rule matters, first on ISCAS-85
-(where the settings were chosen) and then on six held-out ISCAS-89 circuits.
+(where the settings were chosen) and then on six ISCAS-89 and ten ITC'99
+circuits held out from tuning. The switch rule itself is a standard
+incremental-coverage threshold; the contribution is the measurement around it.
 
 ## Findings
 
 **In one paragraph.** A simple online rule (switch when 6 blocks of 64 random
-patterns find at most 1 new fault) lands within about 3% of the best fixed
-switch point chosen in hindsight, on ISCAS-85 and on held-out ISCAS-89 circuits
-alike, with every fault resolved. A fixed pattern count that is good on one
-benchmark set is poor on the other. Our two-stage rule, which probes PODEM's
-yield before switching, ties on ISCAS-85 but is measurably worse on ISCAS-89
-because it switches late, so we do not recommend it over the plain plateau rule.
+patterns find at most 1 new fault) costs about 1.03x the best fixed switch
+point chosen in hindsight on ISCAS-85 and on held-out ISCAS-89 circuits, and
+1.10x on held-out ITC'99 circuits (switch-dependent work), with every fault
+resolved. On average it beats every fixed pattern count in every family,
+including the best single count chosen in hindsight, while a count that is good
+on one family is poor on another. Counting SAT effort does not change this. The
+Poisson test makes the same decisions as the threshold, and probing PODEM's
+yield before switching never helped. The rule's worst case is b04 (1.52x), where
+it switches too early; no fixed window length fixes that without breaking other
+circuits. Uncertainty over circuits (not just seeds) is wide: see
+[Cost measures and uncertainty](#cost-measures-and-uncertainty).
 
 ### ISCAS-85 (settings chosen here)
 
@@ -116,9 +123,10 @@ full scan). Same 19-point grid, 10 seeds, same code and defaults. Results are in
    Geometric means over the 6 circuits. Plateau and stage 1 are
    indistinguishable (plateau ÷ stage 1: 1.001, 0.992–1.009 on switch-dependent
    work), and match their ISCAS-85 numbers.
-3. **The two-stage rule is worse here.** Plateau ÷ two-stage is 0.933
-   (0.906–0.960) on switch-dependent work and 0.989 (0.984–0.993) on total work:
-   the difference is small but its interval excludes 1. The probe makes the rule
+3. **The two-stage rule is worse on two of these circuits.** Plateau ÷ two-stage
+   is 0.933 (0.906–0.960) over seeds on switch-dependent work, but when circuits
+   are resampled too the interval is 0.825–1.008, so the difference rests on
+   s1423 and s5378 and is not established for the family. The probe makes the rule
    keep random patterns running after they have stalled. On s1423 the best N is
    2,048 and two-stage switches at 6,931 on average (1.50× the oracle, 2.3× on the
    worst seed); on s5378, 8,691 against 4,096 (1.10×). Plateau switches at
@@ -138,6 +146,65 @@ Across all 16 circuits together, switch-dependent work ÷ oracle is 1.030
 ![ISCAS-89 cost relative to the oracle](results_iscas89/plots/regret.png)
 
 ![ISCAS-89 cost vs switch point](results_iscas89/plots/cost_vs_switch.png)
+
+### ITC'99, held out (full scan)
+
+Ten ITC'99 circuits from the PoliTo I99T distribution (EUPL-1.2, see
+`benchmarks/ITC99-LICENSE-EUPL-1.2.txt`): b04, b05, b11, b12, b14 (10 seeds) and
+b15, b17, b20, b21, b22 (3 seeds; b17 alone takes hours). 1,684 to 76,625
+collapsed faults. Same grid, code and defaults. Results are in `results_itc99/`;
+reproduce with `make sweep99`. b15, b17, b21 and b22 were run on a second
+machine; the 70 overlapping runs of b15 and b21 agree in every deterministic column.
+
+| method | total work ÷ oracle | 95% interval | switch-dependent work ÷ oracle | 95% interval |
+|---|---:|---:|---:|---:|
+| PODEM only | 1.241 | 1.237–1.253 | 1.664 | 1.645–1.714 |
+| fixed switch @1024 | 1.060 | 1.056–1.071 | 1.189 | 1.171–1.230 |
+| fixed switch @8192 | 1.064 | 1.060–1.075 | 1.206 | 1.192–1.239 |
+| best single fixed N in hindsight (1,536) | | | 1.150 | |
+| plateau rule (6 blocks, ≤1 fault) | 1.022 | 1.019–1.032 | 1.096 | 1.071–1.141 |
+| cost-bound test (stage 1) | 1.019 | 1.016–1.027 | 1.087 | 1.068–1.126 |
+| adaptive, two-stage | 1.024 | 1.019–1.036 | 1.111 | 1.090–1.150 |
+
+- **Harder than ISCAS.** Best N ranges from 1,024 to 32,768. The rules are about
+  10% above the oracle on switch-dependent work, not 3%, but still below every
+  fixed count. Plateau, stage 1 and two-stage are statistically tied; stage 1 is
+  slightly cheaper than two-stage (0.978, 0.963–0.994).
+- **b04 is the failure case** (plateau 1.52x): it switches at about 3,000
+  patterns against a best N of 16,384. Late in the random phase a block costs
+  about 940 gate evaluations, while each PODEM call it saves costs about
+  16,300, so break-even is about one fault per 17 blocks, not one per six.
+  Longer windows (12 or 24 blocks, checked after the fact; `results_window/`)
+  fix b04 but break b05 and b12 and are worse on ISCAS-89.
+- **Grid edge.** b20 and b22 have their best N at 32,768, the top of the grid.
+  Extending it with 49,152 and 65,536 (`results_itc99/extended_grid.csv`, also
+  for b04 and b14) changes no oracle: the new points cost 1.01–2.03x the oracle.
+- **Wall-clock times in `results_itc99/` are not reliable**: those runs shared
+  their machines with other sweeps.
+
+![ITC'99 cost relative to the oracle](results_itc99/plots/regret.png)
+
+### Cost measures and uncertainty
+
+`make costs` (`scripts/cost_breakdown.py`, `scripts/c_sensitivity.py`) reports,
+for each family: SAT calls, propagation steps and share of run time; a combined
+cost `work_total + c * work_sat` with `c` measured as time per SAT step ÷ time
+per gate evaluation (4.9 on ISCAS-85, 4.7 on ISCAS-89, 1.8 on ITC'99); the
+oracle chosen separately for total, switch-dependent, combined and wall-clock
+cost; and intervals from a two-level bootstrap over circuits and seeds.
+
+- SAT is about 11% / 4% / 40% of run time (ISCAS-85 / ISCAS-89 / ITC'99) and
+  nearly the same for every flow. Regret on the combined cost moves by at most 0.01.
+- The total-work, switch-dependent and combined oracles pick the same N on 25
+  of 26 circuits (b17: 768 vs 1,536, a 0.06% tie). The wall-clock oracle differs
+  on most circuits; timing is noisy and its minimum is biased low.
+- For any c from 0 to 20 the ISCAS conclusions hold. On ITC'99 a hindsight-tuned
+  fixed count becomes marginally cheaper than the plateau rule above c ≈ 8 (not
+  than stage 1); the measured c is 1.8.
+- Circuit-level intervals for plateau on switch-dependent work: 1.01–1.10
+  (ISCAS-85), 1.00–1.06 (ISCAS-89), 1.04–1.21 (ITC'99). Plateau ÷ fixed @1024:
+  0.70–0.95, 0.67–0.90, 0.84–1.01. With six and ten held-out circuits these
+  describe the circuits tested, not unseen designs.
 
 ### ISCAS-85 plots
 
@@ -383,14 +450,15 @@ deterministic column of `results_iscas89/summary.csv` matched.
 ## Limitations
 
 - **ISCAS-85 is easy for random patterns**, and the optimum is wide on the late
-  side, so it cannot separate good switching rules from each other. ISCAS-89
-  (full scan) was expected to be where the second stage earns its cost; it was
-  not. ITC'99 and industrial circuits with more random-pattern-resistant faults
-  have not been run.
-- **Settings were chosen on ISCAS-85.** ISCAS-89 is the held-out check; six
-  circuits is still a small set.
-- **Intervals cover seed noise only.** Each benchmark set is one fixed set of
-  circuits, so the intervals do not say how the rules would rank on other circuits.
+  side, so it cannot separate good switching rules from each other. Industrial
+  designs have not been run.
+- **Settings were chosen on ISCAS-85.** ISCAS-89 and ITC'99 are the held-out
+  checks; six and ten circuits are still small sets, and five ITC'99 circuits
+  have only 3 seeds.
+- **Seed-level intervals cover seed noise only.** The circuit-level intervals in
+  [Cost measures and uncertainty](#cost-measures-and-uncertainty) are much wider.
+- **The combined cost uses a measured constant c** that differs between
+  families; `scripts/c_sensitivity.py` shows how far the conclusions depend on it.
 - **Full scan only.** Flip-flops become pseudo inputs and outputs; sequential
   (non-scan) test generation is out of scope.
 - **PODEM is basic.** No static learning, dominators or unique sensitization.
@@ -416,6 +484,8 @@ make                        # builds ./faultatpg
 make test                   # 901 verification checks (~40 s)
 make sweep                  # ISCAS-85: all methods x 10 seeds, then plots (~30 min)
 make sweep89                # ISCAS-89 held-out set into results_iscas89/ (~20 min)
+make sweep99                # ITC'99 held-out set into results_itc99/ (several hours)
+make costs                  # SAT cost, per-measure oracles, circuit-level intervals, c sensitivity
 scripts/sensitivity.sh      # each rule with one setting changed (~15 min on 2 cores)
 scripts/cost_weight.sh      # sweeps with PODEM 0.25x / 4x / 16x as expensive
 scripts/ablation_bt.sh      # sweeps with PODEM backtrack limit 32 / 128
@@ -459,17 +529,23 @@ vlsi-fault-testing/
 │   ├── selftest.cpp  verification suite
 │   └── main.cpp      command-line driver
 ├── benchmarks/       all 11 ISCAS-85 circuits; ISCAS-89 s27, s1423, s5378, s9234,
-│                     s13207, s15850, s38417; all in .bench format
+│                     s13207, s15850, s38417; ITC'99 b04, b05, b11, b12, b14, b15,
+│                     b17, b20, b21, b22 (EUPL-1.2); all in .bench format
 ├── scripts/
 │   ├── verilog2bench.py   ISCAS-85 gate-level Verilog -> .bench
 │   ├── plot_results.py    plots + summary tables + bootstrap intervals from a sweep
 │   ├── check_tests.py     independent re-simulation of committed test sets
 │   ├── sensitivity.sh     settings sweeps for each rule
 │   ├── cost_weight.sh     sweeps with PODEM cost scaled
-│   └── ablation_bt.sh     sweeps with a smaller PODEM budget
+│   ├── ablation_bt.sh     sweeps with a smaller PODEM budget
+│   ├── sweep_itc99.sh     the ITC'99 sweep and its grid extension
+│   ├── cost_breakdown.py  SAT cost, oracle per cost measure, circuit-level intervals
+│   └── c_sensitivity.py   conclusions as a function of the SAT weight c
 ├── results/          summary.csv, summary_table.md, plots/, curves/, decisions/, tests/,
 │                     sensitivity/, weight/, bt/  (ISCAS-85)
 ├── results_iscas89/  the same for the held-out ISCAS-89 sweep
+├── results_itc99/    held-out ITC'99 sweep (summary only) and extended_grid.csv
+├── results_window/   plateau rule with 12- and 24-block windows (checked after the fact)
 ├── paper/            literature review papers
 ├── links.txt         reference links
 └── Makefile
@@ -477,4 +553,5 @@ vlsi-fault-testing/
 
 The ISCAS-85 `.bench` files were converted from the original gate-level Verilog
 distribution with `scripts/verilog2bench.py`; the converted c17 is identical to
-the hand-written one.
+the hand-written one. The ITC'99 `.bench` files are from the PoliTo I99T
+distribution (https://github.com/cad-polito-it/I99T), EUPL-1.2.
